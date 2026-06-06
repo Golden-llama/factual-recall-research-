@@ -35,7 +35,8 @@ class SummedEmbedding(nn.Module):
         self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)
         self.drop = nn.Dropout(cfg.dropout)
     def forward(self, x):
-        pos = torch.arange(512, device = x.device).unsqueeze(0)
+        B, T = x.shape
+        pos = torch.arange(T, device = x.device).unsqueeze(0)
         return self.drop(self.token_emb(x)+self.pos_emb(pos))
 #for concatenated embeddings   
 
@@ -49,7 +50,7 @@ class DisentangledEmbedding(nn.Module):
         self.d_positional = cfg.d_positional
     def forward(self, x):
         B, T = x.shape
-        pos = torch.arange(512, device = x.device).unsqueeze(0)
+        pos = torch.arange(T, device = x.device).unsqueeze(0)
         sem = self.token_emb(x)
         p = self.pos_emb(pos).expand(B,T, self.d_positional)
         return self.drop(torch.cat([sem,p], dim = -1))

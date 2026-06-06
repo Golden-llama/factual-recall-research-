@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     # Config
     cfg = Config()
-    cfg.vocab_size = len(tokenizer)
+    cfg.vocab_size = tokenizer.vocab_size
     if args.steps:
         cfg.max_steps = args.steps
 
