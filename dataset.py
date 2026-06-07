@@ -270,20 +270,6 @@ def _label_roles(tokens, tokenizer):
                 current = role_map.get(label, close_map.get(label, current))
         roles.append(current)
     return roles
-
-FILLER_SEQUENCES = [
-    "<S> Filler one </S> <R> color </R> <O> red </O>",
-    "<S> Filler two </S> <R> shape </R> <O> circle </O>",
-    "<S> Filler three </S> <R> size </R> <O> small </O>",
-]
- 
-def build_perturbed_prompt(query: Query, n_fillers: int, tokenizer):
-    prefix = ""
-    for i in range(n_fillers):
-        prefix += FILLER_SEQUENCES[i % len(FILLER_SEQUENCES)] + " <|sep|> "
-    prefix += query.prompt
-    return tokenizer.encode(prefix, return_tensors="pt")
- 
  
 if __name__ == "__main__":
     entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=1000)

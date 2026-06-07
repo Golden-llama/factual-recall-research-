@@ -17,12 +17,10 @@ import os
 import argparse
 
 
-# ─────────────────────────────────────────────
 # Config
-# ─────────────────────────────────────────────
 
 class Config:
-    vocab_size    = 50264      # GPT-2 50257 + 7 special tokens; always overridden after tokenizer extension
+    vocab_size    = 50264       
     max_seq_len   = 512
     d_model       = 768
     n_heads       = 4          # as specified
@@ -34,7 +32,7 @@ class Config:
     max_steps     = 30000   # hard ceiling — early stopping will trigger first
     warmup_steps  = 500
     eval_every    = 1000       # evaluate every N steps
-    patience      = 5         # stop if val_ppl doesn't improve for this many evals
+    patience      = 3         # stop if val_ppl doesn't improve for this many evals
     min_steps     = 2_000     # don't stop before this many steps (let model warm up)
     seed          = 42
 
@@ -43,9 +41,7 @@ class Config:
     d_positional  = 128
 
 
-# ─────────────────────────────────────────────
 # Embeddings
-# ─────────────────────────────────────────────
 
 class SummedEmbedding(nn.Module):
     """Baseline: token + positional embeddings summed into shared 768-dim space."""
@@ -83,9 +79,7 @@ class DisentangledEmbedding(nn.Module):
         return self.drop(torch.cat([sem, p], dim=-1))                   # (B, T, 768)
 
 
-# ─────────────────────────────────────────────
 # Transformer — 4 heads, 4 blocks
-# ─────────────────────────────────────────────
 
 class TransformerBlock(nn.Module):
     def __init__(self, cfg):
@@ -161,9 +155,7 @@ class TransformerLM(nn.Module):
         return self.embed.token_emb(token_ids)
 
 
-# ─────────────────────────────────────────────
 # Training utilities
-# ─────────────────────────────────────────────
 
 def get_lr(step, cfg):
     if step < cfg.warmup_steps:
