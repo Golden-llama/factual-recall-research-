@@ -20,9 +20,9 @@ import argparse
 # Config
 
 class Config:
-    vocab_size    = 50264       
+    vocab_size    = 1052       
     max_seq_len   = 512
-    d_model       = 768
+    d_model       = 128
     n_heads       = 4          # as specified
     n_layers      = 4          # as specified
     dropout       = 0.1
@@ -31,14 +31,14 @@ class Config:
     grad_accum    = 2          # effective batch = 64
     max_steps     = 30000   # hard ceiling — early stopping will trigger first
     warmup_steps  = 500
-    eval_every    = 1000       # evaluate every N steps
-    patience      = 3         # stop if val_ppl doesn't improve for this many evals
-    min_steps     = 2_000     # don't stop before this many steps (let model warm up)
+    eval_every    = 200       # evaluate every N steps
+    patience      = 5         # stop if val_ppl doesn't improve for this many evals
+    min_steps     = 1000     # don't stop before this many steps (let model warm up)
     seed          = 42
 
     # Disentangled split — must sum to d_model
-    d_semantic    = 640
-    d_positional  = 128
+    d_semantic    = 96
+    d_positional  = 32
 
 
 # Embeddings
