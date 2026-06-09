@@ -6,6 +6,10 @@ Metrics:
   2. Compositional generalization — accuracy on held-out entity × composition pairs
 
 Accuracy formula:  correct / (N × R)   where R = 11
+
+For composition queries, multiple valid answers exist (any entity sharing the
+same attribute value is a correct answer). Scoring checks whether the model's
+top prediction is ANY valid answer, not just the one stored in the dataset.
 """
 
 import torch
@@ -17,16 +21,51 @@ import argparse
 
 from train   import Config, load_model
 from dataset import (load_dataset, EXTRACTION_RELATIONS,
-                     COMPOSITION_RELATIONS, ALL_RELATIONS)
+                     COMPOSITION_RELATIONS, ALL_RELATIONS,
+                     ATTRIBUTE_SCHEMA, COMPOSITION_ATTRS)
 
 
-# Core scoring function
+# ═══════════════════════════════════════════════════════════════
+# Build valid answer sets for composition queries
+# ═══════════════════════════════════════════════════════════════
+
+def build_valid_answers(entities):
+    """
+    For each (subject, composition_relation) pair, return the set of ALL
+    valid answer entity names — any entity sharing the same attribute value.
+
+    e.g. Bliblax-210 → same_color_as → {all entities with color=green} - {Bliblax-210}
+
+    Extraction queries have exactly one correct answer so they don't need this.
+    """
+    # Index: (attr, value) → set of entity names with that value
+    value_to_names = defaultdict(set)
+    for e in entities:
+        for attr in COMPOSITION_ATTRS:
+            value_to_names[(attr, e[attr])].add(e["name"])
+
+    # Build valid answer sets for each (subject, relation) pair
+    valid = {}
+    for e in entities:
+        for attr in COMPOSITION_ATTRS:
+            rel     = f"same_{attr}_as"
+            val     = e[attr]
+            # All entities sharing this value, excluding the subject itself
+            answers = value_to_names[(attr, val)] - {e["name"]}
+            valid[(e["name"], rel)] = answers
+
+    return valid
+
+
+# ═══════════════════════════════════════════════════════════════
+# Core scoring functions
+# ═══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def score_query(model, tokenizer, query, device):
+def score_extraction(model, tokenizer, query, device):
     """
-    Returns rank of correct answer token at the <O> position.
-    Rank 1 = correct (top prediction).
+    Score an extraction query. Exactly one correct answer.
+    Returns True if the model's top prediction matches the answer.
     """
     input_ids = tokenizer.encode(query.prompt, return_tensors="pt").to(device)
     if input_ids.size(1) >= 512:
@@ -36,28 +75,61 @@ def score_query(model, tokenizer, query, device):
     probs     = F.softmax(logits[0, -1, :], dim=-1)
     ans_tok   = tokenizer.encode(query.answer)[0]
     rank      = (probs > probs[ans_tok]).sum().item() + 1
-    return rank
+    return rank == 1
 
 
+@torch.no_grad()
+def score_composition(model, tokenizer, query, valid_answers, device):
+    """
+    Score a composition query against ALL valid answers.
+    Correct if the model's top-1 prediction is any entity sharing
+    the same attribute value as the subject.
+
+    valid_answers: set of entity name strings that are all correct.
+    """
+    input_ids = tokenizer.encode(query.prompt, return_tensors="pt").to(device)
+    if input_ids.size(1) >= 512:
+        return None, None
+
+    logits, _ = model(input_ids)
+    probs     = F.softmax(logits[0, -1, :], dim=-1)
+
+    # Top predicted token
+    top_tok      = probs.argmax().item()
+    top_word     = tokenizer.convert_ids_to_tokens(top_tok)
+
+    # Correct if top prediction is any valid answer
+    correct = top_word in valid_answers
+    return correct, top_word
+
+
+# ═══════════════════════════════════════════════════════════════
 # 1. N × R Attribute Accuracy
+# ═══════════════════════════════════════════════════════════════
 
-def eval_NxR_accuracy(model, tokenizer, test_queries, device):
+def eval_NxR_accuracy(model, tokenizer, test_queries, valid_answers_map, device):
     """
     Accuracy = correct / (N × R)
-    Broken down by relation type and extraction vs composition.
+    Extraction:  single correct answer
+    Composition: any entity sharing the same attribute value is correct
     """
     model.eval()
 
-    by_relation = defaultdict(lambda: {"correct": 0, "total": 0})
-    by_type     = defaultdict(lambda: {"correct": 0, "total": 0})
+    by_relation   = defaultdict(lambda: {"correct": 0, "total": 0})
+    by_type       = defaultdict(lambda: {"correct": 0, "total": 0})
     total_correct, total = 0, 0
 
     for q in test_queries:
-        rank = score_query(model, tokenizer, q, device)
-        if rank is None:
+        if q.query_type == "extraction":
+            correct = score_extraction(model, tokenizer, q, device)
+        else:
+            valid   = valid_answers_map.get((q.subject, q.relation), set())
+            correct, _ = score_composition(model, tokenizer, q, valid, device)
+
+        if correct is None:
             continue
 
-        correct = int(rank == 1)
+        correct = int(correct)
         by_relation[q.relation]["correct"] += correct
         by_relation[q.relation]["total"]   += 1
         by_type[q.query_type]["correct"]   += correct
@@ -79,13 +151,15 @@ def eval_NxR_accuracy(model, tokenizer, test_queries, device):
     }
 
 
+# ═══════════════════════════════════════════════════════════════
 # 2. Compositional Generalization
+# ═══════════════════════════════════════════════════════════════
 
-def eval_compositional_generalization(model, tokenizer, test_queries, held_out_names, device):
+def eval_compositional_generalization(model, tokenizer, test_queries,
+                                       held_out_names, valid_answers_map, device):
     """
     Accuracy on composition queries for held-out entities.
-    These entities had composition queries withheld from training —
-    the model must apply the relation to a subject it never composed before.
+    Uses multi-answer scoring — any entity sharing the attribute is correct.
     """
     model.eval()
     held_comp = [
@@ -97,10 +171,11 @@ def eval_compositional_generalization(model, tokenizer, test_queries, held_out_n
     correct, total = 0, 0
 
     for q in held_comp:
-        rank = score_query(model, tokenizer, q, device)
-        if rank is None:
+        valid      = valid_answers_map.get((q.subject, q.relation), set())
+        c, top_pred = score_composition(model, tokenizer, q, valid, device)
+        if c is None:
             continue
-        c = int(rank == 1)
+        c = int(c)
         correct += c
         total   += 1
         by_relation[q.relation]["correct"] += c
@@ -116,7 +191,9 @@ def eval_compositional_generalization(model, tokenizer, test_queries, held_out_n
     }
 
 
+# ═══════════════════════════════════════════════════════════════
 # Reporting
+# ═══════════════════════════════════════════════════════════════
 
 def print_report(name, r):
     W = 60
@@ -139,6 +216,7 @@ def print_report(name, r):
     g = r["comp_gen"]
     print(f"\n② Compositional Generalization  (n={g['n']})")
     print(f"   Overall P@1: {g['P@1']:.4f}")
+    print(f"   (correct = model's top prediction is ANY entity sharing the attribute)")
     print(f"\n   By relation:")
     for rel, acc in g["by_relation"].items():
         bar = "█" * int(acc * 25)
@@ -181,7 +259,9 @@ def print_comparison(sr, cr):
         print(f"   {rel:<25} summed={s:.3f}  disentangled={c:.3f}  {arrow} ({c-s:+.3f})")
 
 
+# ═══════════════════════════════════════════════════════════════
 # Entry point
+# ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -191,8 +271,8 @@ if __name__ == "__main__":
     parser.add_argument("--out",          default="eval_results.json")
     args = parser.parse_args()
 
-    device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cfg       = Config()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg    = Config()
 
     print("Loading dataset...")
     entities, entity_index, train_queries, test_queries, held_out_names = \
@@ -201,7 +281,20 @@ if __name__ == "__main__":
     tokenizer      = SROTokenizer.from_dataset(args.dataset)
     cfg.vocab_size = tokenizer.vocab_size
 
-    print("Loading models...")
+    # Build valid answer sets for composition queries
+    print("Building valid answer sets for composition queries...")
+    valid_answers_map = build_valid_answers(entities)
+
+    # Sanity check — show how many valid answers exist per relation
+    sample_entity = entities[0]
+    print(f"\n  Valid answer counts for '{sample_entity['name']}':")
+    for attr in COMPOSITION_ATTRS:
+        rel   = f"same_{attr}_as"
+        valid = valid_answers_map.get((sample_entity["name"], rel), set())
+        print(f"    {rel:<22} → {len(valid)} valid answers  "
+              f"(attr={sample_entity[attr]})")
+
+    print("\nLoading models...")
     summed_model = load_model(args.summed,       "summed",       cfg, device)
     disent_model = load_model(args.disentangled, "disentangled", cfg, device)
 
@@ -210,11 +303,12 @@ if __name__ == "__main__":
         print(f"\n{'─'*50}\nEvaluating: {model_name}\n{'─'*50}")
 
         print("① N×R accuracy...")
-        attr_acc = eval_NxR_accuracy(model, tokenizer, test_queries, device)
+        attr_acc = eval_NxR_accuracy(
+            model, tokenizer, test_queries, valid_answers_map, device)
 
         print("② Compositional generalization...")
         comp_gen = eval_compositional_generalization(
-            model, tokenizer, test_queries, held_out_names, device)
+            model, tokenizer, test_queries, held_out_names, valid_answers_map, device)
 
         results = {"attr_acc": attr_acc, "comp_gen": comp_gen}
         all_results[model_name] = results

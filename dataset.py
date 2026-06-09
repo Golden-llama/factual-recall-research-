@@ -89,15 +89,15 @@ def generate_entities(n: int = 1000, seed: int = 42) -> List[Dict]:
         for attr in COMPOSITION_ATTRS:
             value_to_entities[(attr, e[attr])].append(e["name"])
  
-    # Assign composition relations deterministically (alphabetically first match)
+    # Assign composition relations randomly
     for entity in entities:
         for attr in COMPOSITION_ATTRS:
             rel = f"same_{attr}_as"
-            candidates = sorted([
+            candidates = [
                 e for e in value_to_entities[(attr, entity[attr])]
                 if e != entity["name"]
-            ])
-            entity[rel] = candidates[0] if candidates else None
+            ]
+            entity[rel] = random.choice(candidates) if candidates else None
  
     return entities
 
@@ -289,7 +289,7 @@ def get_dataloaders(train_queries, tokenizer, cfg, batch_size=32):
     # This gives ~2100 sequences and much better generalization
     import random
     repeated = []
-    for _ in range(10):
+    for _ in range(20):
         shuffled = train_queries[:]
         random.shuffle(shuffled)
         repeated.extend(shuffled)
