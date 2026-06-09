@@ -21,12 +21,12 @@ import argparse
 
 class Config:
     vocab_size    = 1052       
-    max_seq_len   = 512
-    d_model       = 128
+    max_seq_len   = 128
+    d_model       = 256
     n_heads       = 4          # as specified
     n_layers      = 4          # as specified
     dropout       = 0.1
-    lr            = 3e-4
+    lr            = 1e-4
     batch_size    = 32
     grad_accum    = 2          # effective batch = 64
     max_steps     = 30000   # hard ceiling — early stopping will trigger first
@@ -37,8 +37,8 @@ class Config:
     seed          = 42
 
     # Disentangled split — must sum to d_model
-    d_semantic    = 96
-    d_positional  = 32
+    d_semantic    = 192
+    d_positional  = 64
 
 
 # Embeddings
