@@ -25,9 +25,7 @@ from dataset import (load_dataset, EXTRACTION_RELATIONS,
                      ATTRIBUTE_SCHEMA, COMPOSITION_ATTRS)
 
 
-# ═══════════════════════════════════════════════════════════════
 # Build valid answer sets for composition queries
-# ═══════════════════════════════════════════════════════════════
 
 def build_valid_answers(entities):
     """
@@ -57,9 +55,7 @@ def build_valid_answers(entities):
     return valid
 
 
-# ═══════════════════════════════════════════════════════════════
 # Core scoring functions
-# ═══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
 def score_extraction(model, tokenizer, query, device):
@@ -103,9 +99,7 @@ def score_composition(model, tokenizer, query, valid_answers, device):
     return correct, top_word
 
 
-# ═══════════════════════════════════════════════════════════════
 # 1. N × R Attribute Accuracy
-# ═══════════════════════════════════════════════════════════════
 
 def eval_NxR_accuracy(model, tokenizer, test_queries, valid_answers_map, device):
     """
@@ -151,9 +145,7 @@ def eval_NxR_accuracy(model, tokenizer, test_queries, valid_answers_map, device)
     }
 
 
-# ═══════════════════════════════════════════════════════════════
 # 2. Compositional Generalization
-# ═══════════════════════════════════════════════════════════════
 
 def eval_compositional_generalization(model, tokenizer, test_queries,
                                        held_out_names, valid_answers_map, device):
@@ -191,9 +183,7 @@ def eval_compositional_generalization(model, tokenizer, test_queries,
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# Reporting
-# ═══════════════════════════════════════════════════════════════
+
 
 def print_report(name, r):
     W = 60
@@ -259,9 +249,7 @@ def print_comparison(sr, cr):
         print(f"   {rel:<25} summed={s:.3f}  disentangled={c:.3f}  {arrow} ({c-s:+.3f})")
 
 
-# ═══════════════════════════════════════════════════════════════
 # Entry point
-# ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
