@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from collections import defaultdict
+from torch.nn.utils.rnn import pad_sequence
 """
 <S> Zorblax-7 </S> <R> class </R> <O> warrior </O> <|sep|>
 <S> Zorblax-7 </S> <R> color </R> <O> blue </O> <|sep|>
@@ -84,7 +85,7 @@ def generate_entities(n: int = 1000, seed: int = 42) -> List[Dict]:
         entities.append(entity)
  
     # Build value index for composition relations
-    value_to_entities = defaultdict(list)
+    '''value_to_entities = defaultdict(list)
     for e in entities:
         for attr in COMPOSITION_ATTRS:
             value_to_entities[(attr, e[attr])].append(e["name"])
@@ -98,7 +99,7 @@ def generate_entities(n: int = 1000, seed: int = 42) -> List[Dict]:
                 if e != entity["name"]
             ]
             entity[rel] = random.choice(candidates) if candidates else None
- 
+ '''
     return entities
 
 def build_entity_index(entities: List[Dict]) -> Dict[str, Dict]:
@@ -113,16 +114,17 @@ class Query:
     query_type: str          # "extraction" | "composition" | "multihop"
     split:      str          # "train" | "test"
  
-#Includes answer for training target, used for training. Generates training examples
+#full training example
     @property
     def sequence(self) -> str:
         rel_nl = self.relation.replace("_", " ")
         return f"<S> {self.subject} </S> <R> {rel_nl} </R> <O> {self.answer} </O>"
-# Used for model inference, such as evaluation where model has to predict the answer
+# Used for model input
     @property
     def prompt(self) -> str:
         rel_nl = self.relation.replace("_", " ")
         return f"<S> {self.subject} </S> <R> {rel_nl} </R> <O>"
+
     
 def make_extraction_queries(entities, split="train") -> List[Query]:
     queries = []
@@ -134,7 +136,7 @@ def make_extraction_queries(entities, split="train") -> List[Query]:
             ))
     return queries
  
- 
+'''
 def make_composition_queries(entities, split="train") -> List[Query]:
     queries = []
     for e in entities:
@@ -146,7 +148,7 @@ def make_composition_queries(entities, split="train") -> List[Query]:
                     answer=answer, query_type="composition", split=split,
                 ))
     return queries
-
+'''
 def build_dataset(n_entities=1000, seed=42, comp_train_frac=0.8):
     """
     Returns train_queries and test_queries.
@@ -169,30 +171,31 @@ def build_dataset(n_entities=1000, seed=42, comp_train_frac=0.8):
     shuffled = entities[:]
     random.shuffle(shuffled)
     n_seen    = int(comp_train_frac * len(shuffled))
-    seen      = shuffled[:n_seen]       # composition queries in training
-    held_out  = shuffled[n_seen:]       # composition queries only in test
+    #seen      = shuffled[:n_seen]       # composition queries in training
+    #held_out  = shuffled[n_seen:]       # composition queries only in test
  
-    seen_names     = {e["name"] for e in seen}
-    held_out_names = {e["name"] for e in held_out}
+    #seen_names     = {e["name"] for e in seen}
+    #held_out_names = {e["name"] for e in held_out}
  
     # ── Training queries ──────────────────────────────────────────
     train_queries = (
-        make_extraction_queries(entities, split="train") +
-        make_composition_queries(seen,    split="train")
+        make_extraction_queries(entities, split="train") 
+        #make_composition_queries(seen,    split="train")
     )
  
     # ── Test queries ──────────────────────────────────────────────
     # All N × R pairs
     all_extraction  = make_extraction_queries(entities,  split="test")
-    all_composition = make_composition_queries(entities, split="test")
+    #all_composition = make_composition_queries(entities, split="test")
  
-    test_queries = all_extraction + all_composition
+    test_queries = all_extraction #+ all_composition
  
     # Tag held-out composition for generalization reporting
+    '''
     for q in test_queries:
         if q.query_type == "composition" and q.subject in held_out_names:
             q.split = "test_generalization"
- 
+    '''
     n  = len(entities)
     R  = len(ALL_RELATIONS)
     print(f"\nDataset")
@@ -200,14 +203,14 @@ def build_dataset(n_entities=1000, seed=42, comp_train_frac=0.8):
     print(f"  Relations (R):                   {R}  →  N×R = {n*R}")
     print(f"  Extraction relations:            {EXTRACTION_RELATIONS}")
     print(f"  Composition relations:           {COMPOSITION_RELATIONS}")
-    print(f"  Entities with comp in training:  {len(seen)}  ({comp_train_frac*100:.0f}%)")
-    print(f"  Held-out for generalization:     {len(held_out)}  ({(1-comp_train_frac)*100:.0f}%)")
+    #print(f"  Entities with comp in training:  {len(seen)}  ({comp_train_frac*100:.0f}%)")
+    #print(f"  Held-out for generalization:     {len(held_out)}  ({(1-comp_train_frac)*100:.0f}%)")
     print(f"  Training queries:                {len(train_queries)}")
     print(f"  Test queries (N×R):              {len(test_queries)}")
  
-    return entities, entity_index, train_queries, test_queries, held_out_names
+    return entities, entity_index, train_queries, test_queries #held_out_names
 
-def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset.json"):
+def save_dataset(entities, train_queries, test_queries, path="dataset_extraction.json"): #held_out_names
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -215,12 +218,12 @@ def save_dataset(entities, train_queries, test_queries, held_out_names, path="da
         json.dump({
             "entities":       entities,
             "train_queries":  [q2d(q) for q in train_queries],
-            "test_queries":   [q2d(q) for q in test_queries],
-            "held_out_names": list(held_out_names),
+            "test_queries":   [q2d(q) for q in test_queries]
+           # "held_out_names": list(held_out_names),
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset.json"):
+def load_dataset(path="dataset_extraction.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -231,7 +234,7 @@ def load_dataset(path="dataset.json"):
         build_entity_index(data["entities"]),
         [d2q(d) for d in data["train_queries"]],
         [d2q(d) for d in data["test_queries"]],
-        set(data["held_out_names"]),
+        #set(data["held_out_names"]),
     )
 
 import torch
@@ -239,25 +242,23 @@ from torch.utils.data import Dataset, DataLoader
 
 class QueryDataset(Dataset):
     def __init__(self, queries: List[Query], tokenizer, seq_len: int):
-        sep_id = tokenizer.convert_tokens_to_ids("<|sep|>")
-        all_tokens, all_roles = [], []
-        for q in sorted(queries, key=lambda q: (q.subject, q.relation)):
-            toks  = tokenizer.encode(q.sequence)
-            roles = _label_roles(toks, tokenizer)
-            all_tokens.extend(toks  + [sep_id])
-            all_roles.extend(roles + [0])
- 
         self.seqs = []
-        for i in range(0, len(all_tokens) - seq_len, seq_len):
+        for q in sorted(queries, key=lambda q: (q.subject, q.relation)):
+            sequence = tokenizer.encode(q.sequence)
+
             self.seqs.append((
-                torch.tensor(all_tokens[i   : i+seq_len],   dtype=torch.long),
-                torch.tensor(all_tokens[i+1 : i+seq_len+1], dtype=torch.long),
-                torch.tensor(all_roles[i    : i+seq_len],   dtype=torch.long),
+                torch.tensor(sequence[:-1], dtype=torch.long),
+                torch.tensor(sequence[1:], dtype=torch.long)
             ))
  
     def __len__(self):        return len(self.seqs)
     def __getitem__(self, i): return self.seqs[i]
- 
+
+def collate_fn(batch):
+    inputs  = pad_sequence([b[0] for b in batch], batch_first=True, padding_value=0)
+    targets = pad_sequence([b[1] for b in batch], batch_first=True, padding_value=0)
+    return inputs, targets
+'''
 def _label_roles(tokens, tokenizer):
     ids = {tok: tokenizer.convert_tokens_to_ids(tok)
            for tok in ["<S>", "</S>", "<R>", "</R>", "<O>", "</O>"]}
@@ -270,9 +271,9 @@ def _label_roles(tokens, tokenizer):
                 current = role_map.get(label, close_map.get(label, current))
         roles.append(current)
     return roles
- 
+'''
 if __name__ == "__main__":
-    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=1000)
+    entities, entity_index, train_q, test_q = build_dataset(n_entities=1000) #held_out
     e = entities[0]
     print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
     print(f"\nTraining sequences for {e['name']}:")
@@ -281,30 +282,18 @@ if __name__ == "__main__":
     print(f"\nTest sequences for {e['name']}:")
     for q in [q for q in test_q if q.subject == e["name"]][:14]:
         print(f"  [{q.query_type:11}] {q.sequence}")
-    save_dataset(entities, train_q, test_q, held_out)
+    save_dataset(entities, train_q, test_q) #held_out
 
 
 def get_dataloaders(train_queries, tokenizer, cfg, batch_size=32):
     # Repeat queries 10x with different orderings
     # This gives ~2100 sequences and much better generalization
-    import random
-    repeated = []
-    for _ in range(20):
-        shuffled = train_queries[:]
-        random.shuffle(shuffled)
-        repeated.extend(shuffled)
 
-    ds    = QueryDataset(repeated, tokenizer, cfg.max_seq_len)
-    n_val = max(1, len(ds) // 10)
-    tr, va = torch.utils.data.random_split(
-        ds, [len(ds) - n_val, n_val],
-        generator=torch.Generator().manual_seed(42)
-    )
-    tr_dl = DataLoader(tr, batch_size=batch_size, shuffle=True,
+    ds = QueryDataset(train_queries, tokenizer, cfg.max_seq_len)
+    
+    tr_dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn = collate_fn, 
                        num_workers=2, pin_memory=True)
-    va_dl = DataLoader(va, batch_size=batch_size, shuffle=False,
-                       num_workers=2, pin_memory=True)
-    print(f"  Train sequences: {len(tr)}  ({len(tr_dl)} batches)")
-    print(f"  Val   sequences: {len(va)}  ({len(va_dl)} batches)")
-    return tr_dl, va_dl
+   
+    print(f"  Train sequences: {len(ds)}  ({len(tr_dl)} batches)")
+    return tr_dl
  

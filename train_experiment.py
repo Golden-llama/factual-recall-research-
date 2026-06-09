@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # Tokenizer
 
     # Dataset
-    entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset.json")
+    entities, entity_index, train_queries, test_queries = load_dataset("dataset.json")
     
     tokenizer = SROTokenizer.load("tokenizer.json")
 

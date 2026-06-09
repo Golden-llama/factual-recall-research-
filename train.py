@@ -144,7 +144,7 @@ class TransformerLM(nn.Module):
         logits = self.head(x)
         loss   = None
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index = 0)
         return logits, loss
 
     def count_params(self):
@@ -169,7 +169,7 @@ def get_lr(step, cfg):
 def evaluate_ppl(model, val_dl, device, max_batches=50):
     model.eval()
     total_loss, n = 0.0, 0
-    for i, (x, y, _) in enumerate(val_dl):
+    for i, (x, y) in enumerate(val_dl):
         if i >= max_batches: break
         x, y = x.to(device), y.to(device)
         _, loss = model(x, y)
@@ -210,10 +210,10 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
         accum = 0.0
         for _ in range(cfg.grad_accum):
             try:
-                x, y, _ = next(train_iter)
+                x, y = next(train_iter)
             except StopIteration:
                 train_iter = iter(train_dl)
-                x, y, _ = next(train_iter)
+                x, y = next(train_iter)
             x, y = x.to(device), y.to(device)
             _, loss = model(x, y)
             (loss / cfg.grad_accum).backward()
