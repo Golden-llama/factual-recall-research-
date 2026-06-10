@@ -21,20 +21,23 @@ import argparse
 
 class Config:
     vocab_size    = 1052       
-    max_seq_len   = 128
+    max_seq_len   = 20
     d_model       = 256
     n_heads       = 4          # as specified
     n_layers      = 4          # as specified
-    dropout       = 0.1
-    lr            = 1e-4
+    dropout       = 0
+    lr            = 1e-3
     batch_size    = 32
     grad_accum    = 2          # effective batch = 64
     max_steps     = 30000   # hard ceiling — early stopping will trigger first
     warmup_steps  = 500
-    eval_every    = 200       # evaluate every N steps
-    patience      = 5         # stop if val_ppl doesn't improve for this many evals
     min_steps     = 1000     # don't stop before this many steps (let model warm up)
     seed          = 42
+    save_every = 10000
+    eval_every = 500
+    patience = 10
+    min_delta     = 1e-4
+
 
     # Disentangled split — must sum to d_model
     d_semantic    = 192
@@ -144,7 +147,7 @@ class TransformerLM(nn.Module):
         logits = self.head(x)
         loss   = None
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index = 0)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index = -1)
         return logits, loss
 
     def count_params(self):
@@ -165,20 +168,8 @@ def get_lr(step, cfg):
     return cfg.lr * 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
-@torch.no_grad()
-def evaluate_ppl(model, val_dl, device, max_batches=50):
-    model.eval()
-    total_loss, n = 0.0, 0
-    for i, (x, y) in enumerate(val_dl):
-        if i >= max_batches: break
-        x, y = x.to(device), y.to(device)
-        _, loss = model(x, y)
-        total_loss += loss.item()
-        n += 1
-    return math.exp(total_loss / n) if n else float("inf")
 
-
-def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
+def train(embedding_type, cfg, train_dl, device, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     torch.manual_seed(cfg.seed)
 
@@ -187,19 +178,18 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
         model.parameters(), lr=cfg.lr, weight_decay=0.1, betas=(0.9, 0.95)
     )
 
-    log        = {"steps": [], "train_loss": [], "val_ppl": []}
+    log        = {"steps": [], "train_loss": []}
     step       = 0
     train_iter = iter(train_dl)
     optimizer.zero_grad()
 
-    # Early stopping state
-    best_val_ppl      = float("inf")
-    best_step         = 0
-    evals_without_imp = 0   # counts consecutive evals with no improvement
+    # Early stopping on training loss
+    best_loss         = float("inf")
+    evals_without_imp = 0
     best_model_path   = f"{out_dir}/model_best.pt"
 
     print(f"  [{embedding_type}] early stopping: patience={cfg.patience}, "
-          f"eval_every={cfg.eval_every}, min_steps={cfg.min_steps}")
+          f"eval_every={cfg.eval_every}")
 
     while step < cfg.max_steps:
         model.train()
@@ -225,45 +215,39 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
         step += 1
 
         if step % 200 == 0:
-            print(f"  [{embedding_type}] step {step:>6} | loss {accum:.4f} | lr {lr:.2e}")
+            print(f"  [{embedding_type}] step {step:>6} | loss {accum:.6f} | lr {lr:.2e}")
 
         if step % cfg.eval_every == 0:
-            ppl = evaluate_ppl(model, val_dl, device)
             log["steps"].append(step)
-            log["train_loss"].append(round(accum, 4))
-            log["val_ppl"].append(round(ppl, 4))
+            log["train_loss"].append(round(accum, 6))
 
-            if ppl < best_val_ppl:
-                # Improvement — save best model and reset patience counter
-                best_val_ppl      = ppl
-                best_step         = step
+            if accum < best_loss - cfg.min_delta:
+                # Loss improved by at least min_delta
+                best_loss         = accum
                 evals_without_imp = 0
                 torch.save(model.state_dict(), best_model_path)
-                print(f"  [{embedding_type}] step {step:>6} | val_ppl {ppl:.4f}  ✓ best")
+                print(f"  [{embedding_type}] step {step:>6} | loss {accum:.6f}  ✓ best")
             else:
                 evals_without_imp += 1
-                print(f"  [{embedding_type}] step {step:>6} | val_ppl {ppl:.4f}"
+                print(f"  [{embedding_type}] step {step:>6} | loss {accum:.6f}"
                       f"  (no improvement {evals_without_imp}/{cfg.patience})")
 
-            # Early stopping check — only after min_steps
             if step >= cfg.min_steps and evals_without_imp >= cfg.patience:
                 print(f"  [{embedding_type}] early stopping at step {step}. "
-                      f"Best val_ppl {best_val_ppl:.4f} at step {best_step}.")
+                      f"Best loss {best_loss:.6f}")
                 break
 
-    # Load best weights before saving final model
+    # Restore best weights
     if os.path.exists(best_model_path):
         model.load_state_dict(torch.load(best_model_path, map_location=device))
-        print(f"  [{embedding_type}] restored best weights from step {best_step}")
+        print(f"  [{embedding_type}] restored best weights")
 
     torch.save(model.state_dict(), f"{out_dir}/model_final.pt")
-    log["best_step"]    = best_step
-    log["best_val_ppl"] = round(best_val_ppl, 4)
+    log["best_loss"] = round(best_loss, 6)
     with open(f"{out_dir}/log.json", "w") as f:
         json.dump(log, f, indent=2)
     print(f"  [{embedding_type}] training complete → {out_dir}/model_final.pt")
     return model
-
 
 def load_model(path, embedding_type, cfg, device):
     model = TransformerLM(cfg, embedding_type).to(device)

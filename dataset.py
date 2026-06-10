@@ -286,14 +286,11 @@ if __name__ == "__main__":
 
 
 def get_dataloaders(train_queries, tokenizer, cfg, batch_size=32):
-    # Repeat queries 10x with different orderings
-    # This gives ~2100 sequences and much better generalization
-
-    ds = QueryDataset(train_queries, tokenizer, cfg.max_seq_len)
-    
-    tr_dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn = collate_fn, 
-                       num_workers=2, pin_memory=True)
    
+
+    ds    = QueryDataset(train_queries, tokenizer, cfg.max_seq_len)
+    tr_dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
+                       collate_fn=collate_fn, num_workers=2, pin_memory=True)
     print(f"  Train sequences: {len(ds)}  ({len(tr_dl)} batches)")
     return tr_dl
  

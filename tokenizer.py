@@ -45,7 +45,6 @@ class SROTokenizer:
         "</R>",       # 5  — close relation
         "<O>",        # 6  — open object
         "</O>",       # 7  — close object
-        "<|sep|>",    # 8  — triplet separator
     ]
 
     PAD_ID = 0
