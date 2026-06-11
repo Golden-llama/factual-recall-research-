@@ -49,7 +49,7 @@ if __name__ == "__main__":
         print("Training: SUMMED (baseline)")
         print(f"{'='*55}")
         train("summed", cfg, train_dl, device, out_dir=f"{args.out}/summed")
-
+    
     if args.model in ("disentangled", "both"):
         print(f"\n{'='*55}")
         print("Training: DISENTANGLED (method)")

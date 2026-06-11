@@ -85,7 +85,7 @@ class SROTokenizer:
         print(f"  Total vocab:      {self.vocab_size}")
 
     @classmethod
-    def from_dataset(cls, dataset_path: str = "dataset.json") -> "SROTokenizer":
+    def from_dataset(cls, dataset_path: str = "dataset_extraction.json") -> "SROTokenizer":
         """
         Build tokenizer using the entity names already saved in dataset.json.
         This is the recommended way to instantiate — guarantees the tokenizer
@@ -165,11 +165,11 @@ class SROTokenizer:
 if __name__ == "__main__":
     import os
 
-    if not os.path.exists("dataset.json"):
+    if not os.path.exists("dataset_extraction.json"):
         print("dataset.json not found — run dataset.py first.")
         exit(1)
 
-    tokenizer = SROTokenizer.from_dataset("dataset.json")
+    tokenizer = SROTokenizer.from_dataset("dataset_extraction.json")
     tokenizer.save("tokenizer.json")
 
     print()

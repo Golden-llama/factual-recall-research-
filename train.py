@@ -20,7 +20,7 @@ import argparse
 # Config
 
 class Config:
-    vocab_size    = 1052       
+    vocab_size    = 1051      
     max_seq_len   = 20
     d_model       = 256
     n_heads       = 4          # as specified
@@ -30,13 +30,12 @@ class Config:
     batch_size    = 32
     grad_accum    = 2          # effective batch = 64
     max_steps     = 30000   # hard ceiling — early stopping will trigger first
-    warmup_steps  = 500
+    warmup_steps  = 200
     min_steps     = 1000     # don't stop before this many steps (let model warm up)
     seed          = 42
     save_every = 10000
     eval_every = 500
-    patience = 10
-    min_delta     = 1e-4
+    patience = 20
 
 
     # Disentangled split — must sum to d_model
@@ -139,7 +138,7 @@ class TransformerLM(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, std=0.02)
 
-    def forward(self, x, targets=None):
+    def forward(self, x, targets=None, answer_mask=None):
         x      = self.embed(x)
         for block in self.blocks:
             x  = block(x)
@@ -147,7 +146,18 @@ class TransformerLM(nn.Module):
         logits = self.head(x)
         loss   = None
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index = -1)
+            if answer_mask is not None:
+            # Only compute loss at answer token positions
+                loss = F.cross_entropy(
+                    logits[answer_mask],
+                    targets[answer_mask],
+                )
+            else:
+                loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    targets.view(-1),
+                    ignore_index=0
+                )
         return logits, loss
 
     def count_params(self):
@@ -221,9 +231,9 @@ def train(embedding_type, cfg, train_dl, device, out_dir):
             log["steps"].append(step)
             log["train_loss"].append(round(accum, 6))
 
-            if accum < best_loss - cfg.min_delta:
-                # Loss improved by at least min_delta
-                best_loss         = accum
+            if accum < best_loss:
+                
+                best_loss = accum
                 evals_without_imp = 0
                 torch.save(model.state_dict(), best_model_path)
                 print(f"  [{embedding_type}] step {step:>6} | loss {accum:.6f}  ✓ best")

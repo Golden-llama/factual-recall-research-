@@ -241,23 +241,27 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 class QueryDataset(Dataset):
-    def __init__(self, queries: List[Query], tokenizer, seq_len: int):
+    def __init__(self, queries, tokenizer, seq_len):
         self.seqs = []
+        o_id = tokenizer.convert_tokens_to_ids("<O>")
+
         for q in sorted(queries, key=lambda q: (q.subject, q.relation)):
-            sequence = tokenizer.encode(q.sequence)
+            full = tokenizer.encode(q.sequence)
+            
 
             self.seqs.append((
-                torch.tensor(sequence[:-1], dtype=torch.long),
-                torch.tensor(sequence[1:], dtype=torch.long)
+                torch.tensor(full[:-1], dtype=torch.long),
+                torch.tensor(full[1:], dtype=torch.long)
             ))
- 
+
+
     def __len__(self):        return len(self.seqs)
     def __getitem__(self, i): return self.seqs[i]
 
 def collate_fn(batch):
     inputs  = pad_sequence([b[0] for b in batch], batch_first=True, padding_value=0)
     targets = pad_sequence([b[1] for b in batch], batch_first=True, padding_value=0)
-    return inputs, targets
+    return inputs, targets, 
 '''
 def _label_roles(tokens, tokenizer):
     ids = {tok: tokenizer.convert_tokens_to_ids(tok)
@@ -284,7 +288,7 @@ if __name__ == "__main__":
         print(f"  [{q.query_type:11}] {q.sequence}")
     save_dataset(entities, train_q, test_q) #held_out
 
-
+ 
 def get_dataloaders(train_queries, tokenizer, cfg, batch_size=32):
    
 
