@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # Tokenizer
 
     # Dataset
-    entities, entity_index, train_queries, test_queries = load_dataset("dataset_extraction.json")
+    entities, entity_index, train_queries, val_queries, test_queries, held_out_names = load_dataset("dataset_composition.json")
     
     tokenizer = SROTokenizer.load("tokenizer.json")
 
@@ -42,18 +42,18 @@ if __name__ == "__main__":
     # Dataloaders
     print("\nBuilding dataloaders...")
     train_dl = get_dataloaders(train_queries, tokenizer, cfg, batch_size=cfg.batch_size)
-
+    val_dl   = get_dataloaders(val_queries,   tokenizer, cfg, batch_size=cfg.batch_size)
     # Train
     if args.model in ("summed", "both"):
         print(f"\n{'='*55}")
         print("Training: SUMMED (baseline)")
         print(f"{'='*55}")
-        train("summed", cfg, train_dl, device, out_dir=f"{args.out}/summed")
+        train("summed", cfg, train_dl, val_dl, device, out_dir=f"{args.out}/summed")
     
     if args.model in ("disentangled", "both"):
         print(f"\n{'='*55}")
         print("Training: DISENTANGLED (method)")
         print(f"{'='*55}")
-        train("disentangled", cfg, train_dl, device, out_dir=f"{args.out}/disentangled")
+        train("disentangled", cfg, train_dl, val_dl, device, out_dir=f"{args.out}/disentangled")
 
     print("\nTraining complete.")

@@ -46,6 +46,10 @@ class SROTokenizer:
         "<O>",        # 6  — open object
         "</O>",       # 7  — close object
     ]
+    BINARY_TOKENS = [
+        "no",
+        "yes"
+    ]
 
     PAD_ID = 0
     UNK_ID = 1
@@ -70,7 +74,8 @@ class SROTokenizer:
             self.SPECIAL_TOKENS +
             attr_values         +
             rel_words           +
-            entity_names_sorted
+            entity_names_sorted +
+            self.BINARY_TOKENS
         )
 
         self.token2id   = {tok: i for i, tok in enumerate(vocab)}
@@ -85,7 +90,7 @@ class SROTokenizer:
         print(f"  Total vocab:      {self.vocab_size}")
 
     @classmethod
-    def from_dataset(cls, dataset_path: str = "dataset_extraction.json") -> "SROTokenizer":
+    def from_dataset(cls, dataset_path: str = "data/dataset_composition.json") -> "SROTokenizer":
         """
         Build tokenizer using the entity names already saved in dataset.json.
         This is the recommended way to instantiate — guarantees the tokenizer
@@ -165,11 +170,11 @@ class SROTokenizer:
 if __name__ == "__main__":
     import os
 
-    if not os.path.exists("dataset_extraction.json"):
+    if not os.path.exists("data/dataset_composition.json"):
         print("dataset.json not found — run dataset.py first.")
         exit(1)
 
-    tokenizer = SROTokenizer.from_dataset("dataset_extraction.json")
+    tokenizer = SROTokenizer.from_dataset("data/dataset_composition.json")
     tokenizer.save("tokenizer.json")
 
     print()
