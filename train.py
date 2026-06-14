@@ -195,7 +195,7 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
 
     model     = TransformerLM(cfg, embedding_type).to(device)
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=0.1, betas=(0.9, 0.95)
+        model.parameters(), lr=cfg.lr, weight_decay=0.0, betas=(0.9, 0.95)
     )
 
     log        = {"steps": [], "train_loss": [], "val_loss": []}

@@ -88,7 +88,7 @@ def eval_extraction(
             print(f"Correct : {'✓' if correct else '✗'}")
             printed += 1
 
-    overall = total_correct / total if total else 0
+    overall = total_correct / total
 
     return {
         "overall":     overall,

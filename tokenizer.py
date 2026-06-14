@@ -90,7 +90,7 @@ class SROTokenizer:
         print(f"  Total vocab:      {self.vocab_size}")
 
     @classmethod
-    def from_dataset(cls, dataset_path: str = "data/dataset_composition.json") -> "SROTokenizer":
+    def from_dataset(cls, dataset_path: str = "dataset_extraction1500.json") -> "SROTokenizer":
         """
         Build tokenizer using the entity names already saved in dataset.json.
         This is the recommended way to instantiate — guarantees the tokenizer
@@ -144,13 +144,13 @@ class SROTokenizer:
 
     # Save / load
 
-    def save(self, path: str = "tokenizer.json"):
+    def save(self, path: str = "tokenizer1500.json"):
         with open(path, "w") as f:
             json.dump({"token2id": self.token2id}, f, indent=2)
         print(f"  Tokenizer saved → {path}")
 
     @classmethod
-    def load(cls, path: str = "tokenizer.json") -> "SROTokenizer":
+    def load(cls, path: str = "tokenizer1500.json") -> "SROTokenizer":
         """
         Load a previously saved tokenizer directly from tokenizer.json.
         Faster than rebuilding from dataset.json if the vocab hasn't changed.
@@ -170,17 +170,17 @@ class SROTokenizer:
 if __name__ == "__main__":
     import os
 
-    if not os.path.exists("data/dataset_composition.json"):
+    if not os.path.exists("dataset_extraction1500.json"):
         print("dataset.json not found — run dataset.py first.")
         exit(1)
 
-    tokenizer = SROTokenizer.from_dataset("data/dataset_composition.json")
-    tokenizer.save("tokenizer.json")
+    tokenizer = SROTokenizer.from_dataset("dataset_extraction1500.json")
+    tokenizer.save("tokenizer1500.json")
 
     print()
     test_sequences = [
         "<S> Bliblax-210 </S> <R> color </R> <O> blue </O>",
-        "<S> Bliforn-232 </S> <R> same color as </R> <O> Blimpnik-34 </O>",
+        "<S> Bliforn-232 bliblax-210 </S> <R> same color as </R> <O> yes </O>",
         "<S> Bligast-300 </S> <R> material </R> <O> metal </O>",
     ]
 

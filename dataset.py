@@ -59,7 +59,7 @@ ALL_RELATIONS = EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
 # origin, class, and along with a name for one entity that matches each category of same color,
 # same shape, same size, etc
 
-def generate_entities(n: int = 1000, seed: int = 42) -> List[Dict]:
+def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
     random.seed(seed)
  
     prefixes = ["Zor", "Bli", "Kre", "Fax", "Quu", "Miv", "Dro", "Sple",
@@ -72,7 +72,7 @@ def generate_entities(n: int = 1000, seed: int = 42) -> List[Dict]:
     names = set()
     while len(names) < n:
         name = (random.choice(prefixes) + random.choice(suffixes)
-                + "-" + str(random.randint(1, 999)))
+                + "-" + str(random.randint(1, 5000)))
         names.add(name)
     names = sorted(names)
  
@@ -185,7 +185,7 @@ def make_composition_queries(entities, entity_index, split="train",
                     ))
 
     return queries
-def build_dataset(n_entities=1000, seed=42, comp_train_frac=0.8):
+def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
     """
     Returns train_queries and test_queries.
  
@@ -249,7 +249,7 @@ def build_dataset(n_entities=1000, seed=42, comp_train_frac=0.8):
  
     return entities, entity_index, train_queries, val_queries, test_queries, held_out_names
 
-def save_dataset(entities, train_queries, val_queries, test_queries, held_out_names, path="dataset_composition.json"):
+def save_dataset(entities, train_queries, val_queries, test_queries, held_out_names, path="dataset_extraction1500.json"):
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -263,7 +263,7 @@ def save_dataset(entities, train_queries, val_queries, test_queries, held_out_na
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset_composition.json"):
+def load_dataset(path="dataset_extraction1500.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -304,7 +304,7 @@ def collate_fn(batch):
     return inputs, targets
 
 if __name__ == "__main__":
-    entities, entity_index, train_q, val_q, test_q, held_out = build_dataset(n_entities=1000) 
+    entities, entity_index, train_q, val_q, test_q, held_out = build_dataset(n_entities=1500) 
     e = entities[0]
     print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
     print(f"\nTraining sequences for {e['name']}:")
