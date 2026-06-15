@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
-from experiment1.tokenizer import SROTokenizer
-from experiment1.train_extraction import Config, load_model
-from experiment1.dataset_extraction import load_dataset, EXTRACTION_RELATIONS
+from tokenizer import SROTokenizer
+from train_extraction import Config, load_model
+from dataset_extraction import load_dataset, EXTRACTION_RELATIONS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
@@ -19,25 +19,17 @@ cfg.max_seq_len   = 20
 summed_model = load_model("outputs/summed/model_best.pt",       "summed",       cfg, device)
 disent_model = load_model("outputs/disentangled/model_best.pt", "disentangled", cfg, device)
 @torch.no_grad()
-def decode_answer(model, tokenizer, input_ids, max_new_tokens=5):
-    """
-    Generate answer tokens autoregressively starting from the prompt.
-    Returns a list of token ids (answer only, excluding prompt).
-    """
+def decode_answer(model, tokenizer, input_ids):
+    
     model.eval()
     out = input_ids.clone()
 
-    for _ in range(max_new_tokens):
-        logits, _ = model(out)
-        next_tok = logits[0, -1].argmax().item()
-        out = torch.cat(
-            [out, torch.tensor([[next_tok]], device=out.device)],
-            dim=1
-        )
-        if next_tok == tokenizer.convert_tokens_to_ids("</O>"):
-            break
+   
+    logits, _ = model(out)
+    next_tok = logits[0, -1].argmax().item()
+        
 
-    return out[0, input_ids.size(1):].tolist()
+    return next_tok
 
 @torch.no_grad()
 def eval_extraction(
@@ -65,10 +57,10 @@ def eval_extraction(
 
         # Decode prediction
         pred_ids = decode_answer(model, tokenizer, input_ids)
-        pred_text = tokenizer.decode(pred_ids).strip()
+        pred_text = tokenizer.decode([pred_ids])
 
-        gold_ids  = tokenizer.encode(q.answer + " </O>")
-        gold_text = tokenizer.decode(gold_ids).strip()
+        gold_ids  = tokenizer.encode(q.answer)[0]
+        gold_text = tokenizer.decode([gold_ids])
 
         correct = int(pred_ids == gold_ids)
 

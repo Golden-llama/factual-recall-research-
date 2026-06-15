@@ -19,7 +19,7 @@ import os
 # Config
 
 class Config:
-    vocab_size    = 1052
+    vocab_size    = 1053
     max_seq_len   = 20
     d_model       = 120
     n_heads       = 4          # as specified
@@ -145,18 +145,12 @@ class TransformerLM(nn.Module):
         logits = self.head(x)
         loss   = None
         if targets is not None:
-            if answer_mask is not None:
-            # Only compute loss at answer token positions
-                loss = F.cross_entropy(
-                    logits[answer_mask],
-                    targets[answer_mask],
+           # Only compute loss at answer token positions
+            loss = F.cross_entropy(
+                logits[answer_mask],
+                targets[answer_mask],
                 )
-            else:
-                loss = F.cross_entropy(
-                    logits.view(-1, logits.size(-1)),
-                    targets.view(-1),
-                    ignore_index=0
-                )
+            
         return logits, loss
 
     def count_params(self):
@@ -176,19 +170,9 @@ def get_lr(step, cfg):
     progress = (step - cfg.warmup_steps) / max(1, cfg.max_steps - cfg.warmup_steps)
     return cfg.lr * 0.5 * (1.0 + math.cos(math.pi * progress))
 
-@torch.no_grad()
-def evaluate_val(model, val_dl, device):
-    model.eval()
-    total_loss, n = 0.0, 0
-    for x, y, mask in val_dl:
-        x, y, mask = x.to(device), y.to(device), mask.to(device)
-        _, loss = model(x, y, answer_mask = mask)
-        if loss is not None:
-            total_loss += loss.item()
-            n += 1
-    return total_loss / n if n else float("inf")
 
-def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
+
+def train(embedding_type, cfg, train_dl, device, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     torch.manual_seed(cfg.seed)
 
@@ -232,29 +216,7 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
         optimizer.step()
         optimizer.zero_grad()
         step += 1
-        '''
-        if step % cfg.eval_every == 0:
-            log["steps"].append(step)
-            log["train_loss"].append(round(accum, 6))
-            val_loss = evaluate_val(model, val_dl, device)
-            log["val_loss"].append(round(val_loss, 6))
-
-            if val_loss < best_loss:
-                best_loss         = val_loss
-                evals_without_imp = 0
-                torch.save(model.state_dict(), best_model_path)
-                print(f"  [{embedding_type}] step {step:>6} | "
-                    f"val_loss {val_loss:.6f}  ✓ best")
-            else:
-                evals_without_imp += 1
-                print(f"  [{embedding_type}] step {step:>6} | "
-                  f"val_loss {val_loss:.6f}  "
-                  f"(no improvement {evals_without_imp}/{cfg.patience})")
-
-            if step >= cfg.min_steps and evals_without_imp >= cfg.patience:
-                print(f"  [{embedding_type}] early stopping at step {step}")
-                break
-        '''
+                   
         if step % 200 == 0:
             print(f"  [{embedding_type}] step {step:>6} | loss {accum:.6f} | lr {lr:.2e}")
         
