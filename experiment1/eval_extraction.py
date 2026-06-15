@@ -1,19 +1,19 @@
 import torch
 import torch.nn.functional as F
-from tokenizer import SROTokenizer
-from train import Config, load_model
-from dataset import load_dataset, EXTRACTION_RELATIONS
+from experiment1.tokenizer import SROTokenizer
+from experiment1.train_extraction import Config, load_model
+from experiment1.dataset_extraction import load_dataset, EXTRACTION_RELATIONS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
 
-entities, entity_index, train_queries, test_queries = load_dataset("dataset_extraction.json")
+entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset_extraction1000.json")
 
-tokenizer      = SROTokenizer.from_dataset("dataset_extraction.json")
+tokenizer      = SROTokenizer.from_dataset("dataset_extraction1000.json")
 cfg.vocab_size = tokenizer.vocab_size
-cfg.d_model    = 256
-cfg.d_semantic    = 192
-cfg.d_positional  = 64
+cfg.d_model    = 120
+cfg.d_semantic    = 90
+cfg.d_positional  = 30
 cfg.max_seq_len   = 20
 
 summed_model = load_model("outputs/summed/model_best.pt",       "summed",       cfg, device)

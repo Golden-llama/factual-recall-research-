@@ -24,7 +24,7 @@ Usage:
     print(tokenizer.vocab_size)   # 1052
 """
 
-from dataset import ATTRIBUTE_SCHEMA, EXTRACTION_RELATIONS, COMPOSITION_RELATIONS
+from dataset_extraction import ATTRIBUTE_SCHEMA, EXTRACTION_RELATIONS, COMPOSITION_RELATIONS
 from typing import List, Union
 import json
 
@@ -90,7 +90,7 @@ class SROTokenizer:
         print(f"  Total vocab:      {self.vocab_size}")
 
     @classmethod
-    def from_dataset(cls, dataset_path: str = "dataset_extraction1500.json") -> "SROTokenizer":
+    def from_dataset(cls, dataset_path: str = "experiment1/dataset_extraction1000.json") -> "SROTokenizer":
         """
         Build tokenizer using the entity names already saved in dataset.json.
         This is the recommended way to instantiate — guarantees the tokenizer
@@ -144,13 +144,13 @@ class SROTokenizer:
 
     # Save / load
 
-    def save(self, path: str = "tokenizer1500.json"):
+    def save(self, path: str = "experiment1/tokenizer1000.json"):
         with open(path, "w") as f:
             json.dump({"token2id": self.token2id}, f, indent=2)
         print(f"  Tokenizer saved → {path}")
 
     @classmethod
-    def load(cls, path: str = "tokenizer1500.json") -> "SROTokenizer":
+    def load(cls, path: str = "experiment1/tokenizer1000.json") -> "SROTokenizer":
         """
         Load a previously saved tokenizer directly from tokenizer.json.
         Faster than rebuilding from dataset.json if the vocab hasn't changed.
@@ -170,12 +170,12 @@ class SROTokenizer:
 if __name__ == "__main__":
     import os
 
-    if not os.path.exists("dataset_extraction1500.json"):
+    if not os.path.exists("experiment1/dataset_extraction1000.json"):
         print("dataset.json not found — run dataset.py first.")
         exit(1)
 
-    tokenizer = SROTokenizer.from_dataset("dataset_extraction1500.json")
-    tokenizer.save("tokenizer1500.json")
+    tokenizer = SROTokenizer.from_dataset("experiment1/dataset_extraction1000.json")
+    tokenizer.save("experiment1/tokenizer1000.json")
 
     print()
     test_sequences = [

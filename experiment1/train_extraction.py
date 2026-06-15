@@ -14,15 +14,14 @@ import torch.nn.functional as F
 import math
 import json
 import os
-import argparse
 
 
 # Config
 
 class Config:
-    vocab_size    = 1053      
+    vocab_size    = 1052
     max_seq_len   = 20
-    d_model       = 256
+    d_model       = 120
     n_heads       = 4          # as specified
     n_layers      = 4          # as specified
     dropout       = 0
@@ -34,13 +33,13 @@ class Config:
     min_steps     = 1000     # don't stop before this many steps (let model warm up)
     seed          = 42
     save_every = 10000
-    eval_every = 500
-    patience = 20
+    eval_every = 200
+    patience = 10
 
 
     # Disentangled split — must sum to d_model
-    d_semantic    = 192
-    d_positional  = 64
+    d_semantic    = 90
+    d_positional  = 30
 
 
 # Embeddings
@@ -138,7 +137,7 @@ class TransformerLM(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, std=0.02)
 
-    def forward(self, x, targets=None, answer_mask=None):
+    def forward(self, x, targets=None, answer_mask = None):
         x      = self.embed(x)
         for block in self.blocks:
             x  = block(x)
@@ -181,9 +180,9 @@ def get_lr(step, cfg):
 def evaluate_val(model, val_dl, device):
     model.eval()
     total_loss, n = 0.0, 0
-    for x, y in val_dl:
-        x, y = x.to(device), y.to(device)
-        _, loss = model(x, y)
+    for x, y, mask in val_dl:
+        x, y, mask = x.to(device), y.to(device), mask.to(device)
+        _, loss = model(x, y, answer_mask = mask)
         if loss is not None:
             total_loss += loss.item()
             n += 1
@@ -220,12 +219,12 @@ def train(embedding_type, cfg, train_dl, val_dl, device, out_dir):
         accum = 0.0
         for _ in range(cfg.grad_accum):
             try:
-                x, y = next(train_iter)
+                x, y, mask = next(train_iter)
             except StopIteration:
                 train_iter = iter(train_dl)
-                x, y = next(train_iter)
-            x, y = x.to(device), y.to(device)
-            _, loss = model(x, y)
+                x, y, mask = next(train_iter)
+            x, y, mask = x.to(device), y.to(device), mask.to(device)
+            _, loss = model(x, y, answer_mask = mask)
             (loss / cfg.grad_accum).backward()
             accum += loss.item() / cfg.grad_accum
 

@@ -15,12 +15,12 @@ top prediction is ANY valid answer, not just the one stored in the dataset.
 import torch
 import torch.nn.functional as F
 from collections import defaultdict
-from tokenizer import SROTokenizer
+from experiment1.tokenizer import SROTokenizer
 import json
 import argparse
 
-from train   import Config, load_model
-from dataset import (load_dataset, EXTRACTION_RELATIONS,
+from experiment1.train_extraction   import Config, load_model
+from experiment1.dataset_extraction import (load_dataset, EXTRACTION_RELATIONS,
                      COMPOSITION_RELATIONS, ALL_RELATIONS,
                      ATTRIBUTE_SCHEMA, COMPOSITION_ATTRS)
 

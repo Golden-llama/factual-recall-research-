@@ -84,22 +84,6 @@ def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
             entity[attr] = random.choice(ATTRIBUTE_SCHEMA[attr])
         entities.append(entity)
  
-    # Build value index for composition relations
-    '''value_to_entities = defaultdict(list)
-    for e in entities:
-        for attr in COMPOSITION_ATTRS:
-            value_to_entities[(attr, e[attr])].append(e["name"])
- 
-    # Assign composition relations randomly
-    for entity in entities:
-        for attr in COMPOSITION_ATTRS:
-            rel = f"same_{attr}_as"
-            candidates = [
-                e for e in value_to_entities[(attr, entity[attr])]
-                if e != entity["name"]
-            ]
-            entity[rel] = random.choice(candidates) if candidates else None
- '''
     return entities
 
 def build_entity_index(entities: List[Dict]) -> Dict[str, Dict]:
@@ -136,55 +120,9 @@ def make_extraction_queries(entities, split="train") -> List[Query]:
             ))
     return queries
  
-def make_composition_queries(entities, entity_index, split="train",
-                              neg_per_pos=1) -> List[Query]:
-    """
-    For each (entity, composition_attr) pair, generate:
-      - One positive pair:  two entities that share the attribute → yes
-      - neg_per_pos negative pairs: two entities that don't share → no
 
-    Format: <S> EntityA EntityB </S> <R> same X as </R> <O> yes/no </O>
-    """
-    value_to_names = defaultdict(list)
-    for e in entities:
-        for attr in COMPOSITION_ATTRS:
-            value_to_names[(attr, e[attr])].append(e["name"])
 
-    queries = []
-    for entity in entities:
-        for attr in COMPOSITION_ATTRS:
-            rel = f"same_{attr}_as"
-            val = entity[attr]
-
-            # Positive example — find another entity with same value
-            same_val = [n for n in value_to_names[(attr, val)]
-                        if n != entity["name"]]
-            if same_val:
-                partner = random.choice(same_val)
-                queries.append(Query(
-                    subject    = f"{entity['name']} {partner}",
-                    relation   = rel,
-                    answer     = "yes",
-                    query_type = "composition",
-                    split      = split,
-                ))
-
-            # Negative example — find entity with different value
-            diff_val = [n for n in entities
-                        if n["name"] != entity["name"]
-                        and n[attr] != val]
-            for _ in range(neg_per_pos):
-                if diff_val:
-                    neg_partner = random.choice(diff_val)
-                    queries.append(Query(
-                        subject    = f"{entity['name']} {neg_partner['name']}",
-                        relation   = rel,
-                        answer     = "no",
-                        query_type = "composition",
-                        split      = split,
-                    ))
-
-    return queries
+    
 def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
     """
     Returns train_queries and test_queries.
@@ -214,18 +152,15 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
  
     # ── Training queries ──────────────────────────────────────────
     train_queries = (
-        make_extraction_queries(entities, split="train") +
-        make_composition_queries(seen, entity_index,    split="train")
+        make_extraction_queries(entities, split="train") 
     )
-    val_queries = make_composition_queries(held_out, entity_index, split="val")
 
  
     # ── Test queries ──────────────────────────────────────────────
     # All N × R pairs
     all_extraction  = make_extraction_queries(entities,  split="test")
-    all_composition = make_composition_queries(entities, entity_index, split="test")
  
-    test_queries = all_extraction + all_composition
+    test_queries = all_extraction 
  
     # Tag held-out composition for generalization reporting
     
@@ -247,9 +182,9 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
     print(f"  Training queries:                {len(train_queries)}")
     print(f"  Test queries (N×R):              {len(test_queries)}")
  
-    return entities, entity_index, train_queries, val_queries, test_queries, held_out_names
+    return entities, entity_index, train_queries, test_queries, held_out_names
 
-def save_dataset(entities, train_queries, val_queries, test_queries, held_out_names, path="dataset_extraction1500.json"):
+def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction1000.json"):
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -257,13 +192,12 @@ def save_dataset(entities, train_queries, val_queries, test_queries, held_out_na
         json.dump({
             "entities":       entities,
             "train_queries":  [q2d(q) for q in train_queries],
-            "val_queries":    [q2d(q) for q in val_queries],
             "test_queries":   [q2d(q) for q in test_queries],
             "held_out_names": list(held_out_names),
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset_extraction1500.json"):
+def load_dataset(path="dataset_extraction1000.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -273,7 +207,6 @@ def load_dataset(path="dataset_extraction1500.json"):
         data["entities"],
         build_entity_index(data["entities"]),
         [d2q(d) for d in data["train_queries"]],
-        [d2q(d) for d in data["val_queries"]],
         [d2q(d) for d in data["test_queries"]],
         set(data["held_out_names"]),
     )
@@ -282,18 +215,21 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 class QueryDataset(Dataset):
-    def __init__(self, queries, tokenizer, seq_len):
+    def __init__(self, queries, tokenizer):
         self.seqs = []
-
+        o_id = tokenizer.convert_tokens_to_ids("<O>")
         for q in sorted(queries, key=lambda q: (q.subject, q.relation)):
             full = tokenizer.encode(q.sequence)
-            
-
-            self.seqs.append((
-                torch.tensor(full[:-1], dtype=torch.long),
-                torch.tensor(full[1:], dtype=torch.long)
-            ))
-
+           
+            x = torch.tensor(full[:-1], dtype=torch.long)
+            y = torch.tensor(full[1:], dtype=torch.long)
+            mask = torch.zeros(len(x), dtype = torch.bool)
+            for i, tok in enumerate(x.tolist()):
+                if tok == o_id:
+                    mask[i] = True
+                    break
+            self.seqs.append((x,y,mask))
+        
 
     def __len__(self):        return len(self.seqs)
     def __getitem__(self, i): return self.seqs[i]
@@ -301,10 +237,11 @@ class QueryDataset(Dataset):
 def collate_fn(batch):
     inputs  = pad_sequence([b[0] for b in batch], batch_first=True, padding_value=0)
     targets = pad_sequence([b[1] for b in batch], batch_first=True, padding_value=0)
-    return inputs, targets
+    masks   = pad_sequence([b[2] for b in batch], batch_first=True, padding_value=False)
+    return inputs, targets, masks
 
 if __name__ == "__main__":
-    entities, entity_index, train_q, val_q, test_q, held_out = build_dataset(n_entities=1500) 
+    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=1000) 
     e = entities[0]
     print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
     print(f"\nTraining sequences for {e['name']}:")
@@ -313,13 +250,13 @@ if __name__ == "__main__":
     print(f"\nTest sequences for {e['name']}:")
     for q in [q for q in test_q if q.subject == e["name"]][:14]:
         print(f"  [{q.query_type:11}] {q.sequence}")
-    save_dataset(entities, train_q, val_q, test_q, held_out) 
+    save_dataset(entities, train_q, test_q, held_out) 
 
  
-def get_dataloaders(train_queries, tokenizer, cfg, batch_size=32):
+def get_dataloaders(train_queries, tokenizer, batch_size=32):
    
 
-    ds    = QueryDataset(train_queries, tokenizer, cfg.max_seq_len)
+    ds    = QueryDataset(train_queries, tokenizer)
     tr_dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
                        collate_fn=collate_fn, num_workers=2, pin_memory=True)
     print(f"  Train sequences: {len(ds)}  ({len(tr_dl)} batches)")
