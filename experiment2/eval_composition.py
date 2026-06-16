@@ -1,161 +1,231 @@
 import torch
-import torch.nn.functional as F
 from collections import defaultdict
-from experiment1.tokenizer import SROTokenizer
-from experiment1.train_extraction import Config, load_model
-from experiment1.dataset_extraction import load_dataset, EXTRACTION_RELATIONS, COMPOSITION_RELATIONS
+from tokenizer_composition import SROTokenizer
+from train_composition import Config, load_model
+from dataset_composition import (
+    load_dataset,
+    EXTRACTION_RELATIONS,
+    COMPOSITION_RELATIONS,
+)
 
-# ── Load ────────────────────────────────────────────────────────
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
 
 entities, entity_index, train_queries, val_queries, test_queries, held_out_names = \
-    load_dataset("dataset_composition.json")
+    load_dataset("dataset_composition1000.json")
 
-tokenizer      = SROTokenizer.load("tokenizer.json")
+tokenizer      = SROTokenizer.load("tokenizer1000.json")
 cfg.vocab_size = tokenizer.vocab_size
-cfg.d_model      = 256
-cfg.d_semantic   = 192
-cfg.d_positional = 64
-cfg.max_seq_len  = 20
 
 summed_model = load_model("outputs/summed/model_best.pt",       "summed",       cfg, device)
 disent_model = load_model("outputs/disentangled/model_best.pt", "disentangled", cfg, device)
 
 
-# ═══════════════════════════════════════════════════════════════
-# Core scoring
-# ═══════════════════════════════════════════════════════════════
-
 @torch.no_grad()
-def score_query(model, tokenizer, query, device):
-    input_ids = tokenizer.encode(query.prompt, return_tensors="pt").to(device)
-    logits, _ = model(input_ids)
-    probs     = F.softmax(logits[0, -1, :], dim=-1)
-    ans_tok   = tokenizer.encode(query.answer)[0]
-    correct   = int(probs.argmax().item() == ans_tok)
-    top3_ids  = probs.argsort(descending=True)[:3].tolist()
-    top3      = [(tokenizer.convert_ids_to_tokens(i), round(probs[i].item(), 3))
-                 for i in top3_ids]
-    return correct, top3
-
-
-# ═══════════════════════════════════════════════════════════════
-# Evaluation — three buckets
-# ═══════════════════════════════════════════════════════════════
-
-@torch.no_grad()
-def evaluate(model, tokenizer, test_queries, held_out_names, device):
+def decode_answer(model, input_ids):
     model.eval()
+    logits, _ = model(input_ids)
+    return logits[0, -1].argmax().item()
 
-    extraction   = [q for q in test_queries if q.query_type == "extraction"]
-    comp_seen    = [q for q in test_queries
-                    if q.query_type == "composition"
-                    and q.subject.split()[0] not in held_out_names]
-    comp_heldout = [q for q in test_queries
-                    if q.query_type == "composition"
-                    and q.subject.split()[0] in held_out_names]
 
-    def acc(queries):
-        if not queries:
-            return 0.0, 0
-        correct = sum(score_query(model, tokenizer, q, device)[0] for q in queries)
-        return correct / len(queries), len(queries)
+@torch.no_grad()
+def eval_bucket(model, tokenizer, queries, device):
+    by_relation   = defaultdict(lambda: {"correct": 0, "total": 0})
+    total_correct = 0
+    total         = 0
+
+    for q in queries:
+        input_ids = tokenizer.encode(q.prompt, return_tensors="pt").to(device)
+
+        pred_id = decode_answer(model, input_ids)
+        gold_id = tokenizer.encode(q.answer)[0]
+
+        correct = int(pred_id == gold_id)
+
+        by_relation[q.relation]["correct"] += correct
+        by_relation[q.relation]["total"]   += 1
+        total_correct += correct
+        total         += 1
+
+    overall = total_correct / total if total > 0 else 0.0
 
     return {
-        "extraction":          acc(extraction),
-        "composition_seen":    acc(comp_seen),
-        "composition_heldout": acc(comp_heldout),
+        "overall": overall,
+        "total":   total,
+        "by_relation": {
+            r: v["correct"] / v["total"]
+            for r, v in by_relation.items() if v["total"] > 0
+        },
     }
-
-
-# ═══════════════════════════════════════════════════════════════
-# Print examples
-# ═══════════════════════════════════════════════════════════════
-
 @torch.no_grad()
-def print_examples(model, model_name, test_queries, held_out_names, device, n=5):
+def print_examples(
+    model,
+    tokenizer,
+    queries,
+    device,
+    title,
+    max_examples=5,
+):
     model.eval()
+
     print(f"\n{'═'*65}")
-    print(f" EXAMPLES — {model_name}")
+    print(f" EXAMPLES — {title}")
     print(f"{'═'*65}")
 
-    buckets = {
-        "Extraction (all entities)":         [q for q in test_queries
-                                              if q.query_type == "extraction"][:n],
-        "Composition — seen entities":       [q for q in test_queries
-                                              if q.query_type == "composition"
-                                              and q.subject.split()[0]
-                                              not in held_out_names][:n],
-        "Composition — held-out (gen)":      [q for q in test_queries
-                                              if q.query_type == "composition"
-                                              and q.subject.split()[0]
-                                              in held_out_names][:n],
-    }
+    shown = 0
+    correct_count = 0
 
-    for bucket_name, queries in buckets.items():
-        print(f"\n── {bucket_name} ──")
-        correct_count = 0
-        for q in queries:
-            correct, top3 = score_query(model, tokenizer, q, device)
-            correct_count += correct
-            status = "✓" if correct else "✗"
-            print(f"  {status}  Input:    {q.prompt}")
-            print(f"      Expected: {q.answer}")
-            print(f"      Top 3:    {top3[0][0]}({top3[0][1]})  "
-                  f"{top3[1][0]}({top3[1][1]})  {top3[2][0]}({top3[2][1]})")
-        print(f"  Accuracy on these {n}: {correct_count}/{n}")
+    for q in queries:
+        if shown >= max_examples:
+            break
+
+        input_ids = tokenizer.encode(q.prompt, return_tensors="pt").to(device)
+        pred_id   = decode_answer(model, input_ids)
+        gold_id   = tokenizer.encode(q.answer)[0]
+
+        pred_text = tokenizer.decode([pred_id])
+        gold_text = tokenizer.decode([gold_id])
+
+        correct = int(pred_id == gold_id)
+        correct_count += correct
+        status = "✓" if correct else "✗"
+
+        print(f"\n{status} Prompt : {q.prompt}")
+        print(f"   Gold   : {gold_text}")
+        print(f"   Pred   : {pred_text}")
+        print(f"   Rel    : {q.relation}")
+
+        shown += 1
+
+    print(f"\nAccuracy on these {shown}: {correct_count}/{shown}")
+
+# ── Split test set into three sections ─────────────────────────
+def split_queries(test_queries, held_out_names):
+    extraction = [
+        q for q in test_queries
+        if q.query_type == "extraction"
+    ]
+
+    comp_seen = [
+        q for q in test_queries
+        if q.query_type == "composition"
+        and q.subject.split()[0] not in held_out_names
+    ]
+
+    comp_heldout = [
+        q for q in test_queries
+        if q.query_type == "composition"
+        and q.subject.split()[0] in held_out_names
+    ]
+
+    return extraction, comp_seen, comp_heldout
 
 
-# ═══════════════════════════════════════════════════════════════
-# Report
-# ═══════════════════════════════════════════════════════════════
-
-def print_report(name, r):
+# ── Reporting ──────────────────────────────────────────────────
+def print_report(name, section, relations, r):
     print(f"\n{'═'*55}")
-    print(f" {name}")
+    print(f" {name} — {section}")
     print(f"{'═'*55}")
-    labels = {
-        "extraction":          "Extraction — all entities    ",
-        "composition_seen":    "Composition — seen (train)   ",
-        "composition_heldout": "Composition — held-out (gen) ",
-    }
-    for key, label in labels.items():
-        acc, n = r[key]
-        bar    = "█" * int(acc * 30)
-        print(f"  {label}  {acc:.4f}  {bar}  (n={n})")
+    print(f"  Overall accuracy: {r['overall']:.4f}  ({r['total']} queries)")
+    print(f"\n  By relation:")
+    for rel in relations:
+        acc = r["by_relation"].get(rel, 0)
+        bar = "█" * int(acc * 30)
+        print(f"    {rel:<14} {acc:.4f}  {bar}")
 
 
-def print_comparison(sr, cr):
+def print_comparison(section, relations, sr, cr):
     print(f"\n{'═'*65}")
-    print(" COMPARISON: Summed (baseline) vs Disentangled (method)")
+    print(f" COMPARISON — {section}")
     print(f"{'═'*65}")
-    labels = {
-        "extraction":          "Extraction — all entities    ",
-        "composition_seen":    "Composition — seen (train)   ",
-        "composition_heldout": "Composition — held-out (gen) ",
-    }
-    for key, label in labels.items():
-        s, sn = sr[key]
-        c, cn = cr[key]
-        delta  = c - s
-        arrow  = "↑ method" if delta > 0 else ("↓ method" if delta < 0 else "=")
-        print(f"  {label}  summed={s:.4f}  disent={c:.4f}  "
-              f"{arrow} ({delta:+.4f})  (n={sn})")
+    print(f"  {'Relation':<14} {'Summed':>10} {'Disent':>10} {'Δ':>8}")
+    print(f"  {'-'*50}")
+
+    for rel in relations:
+        s = sr["by_relation"].get(rel, 0)
+        c = cr["by_relation"].get(rel, 0)
+        arrow = "↑" if c > s else ("↓" if c < s else "=")
+        print(f"  {rel:<14} {s:>10.4f} {c:>10.4f} {arrow} {c-s:>+.4f}")
+
+    print(f"  {'-'*50}")
+    print(
+        f"  {'Overall':<14} "
+        f"{sr['overall']:>10.4f} "
+        f"{cr['overall']:>10.4f} "
+        f"{'↑' if cr['overall'] > sr['overall'] else '↓'} "
+        f"{cr['overall']-sr['overall']:>+.4f}"
+    )
 
 
-# ═══════════════════════════════════════════════════════════════
-# Run
-# ═══════════════════════════════════════════════════════════════
 
+
+extraction, comp_seen, comp_heldout = split_queries(test_queries, held_out_names)
+print_examples(
+    summed_model,
+    tokenizer,
+    extraction,
+    device,
+    title="SUMMED — Extraction",
+)
+
+print_examples(
+    summed_model,
+    tokenizer,
+    comp_seen,
+    device,
+    title="SUMMED — Composition (seen)",
+)
+
+print_examples(
+    summed_model,
+    tokenizer,
+    comp_heldout,
+    device,
+    title="SUMMED — Composition (held-out)",
+)
+print_examples(
+    disent_model,
+    tokenizer,
+    extraction,
+    device,
+    title="DISENTANGLED — Extraction",
+)
+
+print_examples(
+    disent_model,
+    tokenizer,
+    comp_seen,
+    device,
+    title="DISENTANGLED — Composition (seen)",
+)
+
+print_examples(
+    disent_model,
+    tokenizer,
+    comp_heldout,
+    device,
+    title="DISENTANGLED — Composition (held-out)",
+)
 print("Evaluating summed model...")
-summed_results = evaluate(summed_model, tokenizer, test_queries, held_out_names, device)
-print_report("SUMMED (baseline)", summed_results)
-print_examples(summed_model, "SUMMED", test_queries, held_out_names, device)
+sum_ext  = eval_bucket(summed_model, tokenizer, extraction,  device)
+sum_seen = eval_bucket(summed_model, tokenizer, comp_seen,   device)
+sum_ho   = eval_bucket(summed_model, tokenizer, comp_heldout, device)
 
-print("\nEvaluating disentangled model...")
-disent_results = evaluate(disent_model, tokenizer, test_queries, held_out_names, device)
-print_report("DISENTANGLED (method)", disent_results)
-print_examples(disent_model, "DISENTANGLED", test_queries, held_out_names, device)
+print("Evaluating disentangled model...")
+dis_ext  = eval_bucket(disent_model, tokenizer, extraction,  device)
+dis_seen = eval_bucket(disent_model, tokenizer, comp_seen,   device)
+dis_ho   = eval_bucket(disent_model, tokenizer, comp_heldout, device)
 
-print_comparison(summed_results, disent_results)
+
+# ── Print reports ──────────────────────────────────────────────
+print_report("SUMMED", "Extraction", EXTRACTION_RELATIONS, sum_ext)
+print_report("SUMMED", "Composition (seen)", COMPOSITION_RELATIONS, sum_seen)
+print_report("SUMMED", "Composition (held-out)", COMPOSITION_RELATIONS, sum_ho)
+
+print_report("DISENTANGLED", "Extraction", EXTRACTION_RELATIONS, dis_ext)
+print_report("DISENTANGLED", "Composition (seen)", COMPOSITION_RELATIONS, dis_seen)
+print_report("DISENTANGLED", "Composition (held-out)", COMPOSITION_RELATIONS, dis_ho)
+
+print_comparison("Extraction", EXTRACTION_RELATIONS, sum_ext, dis_ext)
+print_comparison("Composition (seen)", COMPOSITION_RELATIONS, sum_seen, dis_seen)
+print_comparison("Composition (held-out)", COMPOSITION_RELATIONS, sum_ho, dis_ho)

@@ -52,7 +52,7 @@ ATTRIBUTE_SCHEMA = {
 EXTRACTION_RELATIONS = sorted(ATTRIBUTE_SCHEMA.keys())
  
 COMPOSITION_ATTRS = ["color", "shape", "size", "material", "origin"]
-COMPOSITION_RELATIONS = [f"same_{a}_as" for a in COMPOSITION_ATTRS]
+COMPOSITION_RELATIONS = [f"same {a} as" for a in COMPOSITION_ATTRS]
 ALL_RELATIONS = EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
 
 # returns a list of dictionaries, each representing an entity with color, shape, size, material,
@@ -153,7 +153,7 @@ def make_composition_queries(entities, entity_index, split="train",
     queries = []
     for entity in entities:
         for attr in COMPOSITION_ATTRS:
-            rel = f"same_{attr}_as"
+            rel = f"same {attr} as"
             val = entity[attr]
 
             # Positive example — find another entity with same value
@@ -249,7 +249,7 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
  
     return entities, entity_index, train_queries, val_queries, test_queries, held_out_names
 
-def save_dataset(entities, train_queries, val_queries, test_queries, held_out_names, path="dataset_extraction1000.json"):
+def save_dataset(entities, train_queries, val_queries, test_queries, held_out_names, path="dataset_composition1000.json"):
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -263,7 +263,7 @@ def save_dataset(entities, train_queries, val_queries, test_queries, held_out_na
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset_extraction1000.json"):
+def load_dataset(path="dataset_composition1000.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -304,7 +304,9 @@ class QueryDataset(Dataset):
 def collate_fn(batch):
     inputs  = pad_sequence([b[0] for b in batch], batch_first=True, padding_value=0)
     targets = pad_sequence([b[1] for b in batch], batch_first=True, padding_value=0)
-    return inputs, targets
+    masks   = pad_sequence([b[2] for b in batch], batch_first=True, padding_value=False)
+
+    return inputs, targets, masks
 
 if __name__ == "__main__":
     entities, entity_index, train_q, val_q, test_q, held_out = build_dataset(n_entities=1000) 

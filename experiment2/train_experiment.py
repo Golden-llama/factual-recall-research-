@@ -1,0 +1,55 @@
+"""
+train_experiment.py — Wires dataset + tokenizer + training loop together.
+
+Usage:
+    python train_experiment.py --model both --out ./outputs
+    python train_experiment.py --model both --out ./outputs --steps 2000   # quick pilot
+"""
+
+import torch
+import argparse
+from train_composition     import Config, train, load_model
+from dataset_composition   import build_dataset, save_dataset, get_dataloaders, load_dataset
+from tokenizer_composition import SROTokenizer
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model",  choices=["summed", "disentangled", "both"], default="both")
+    parser.add_argument("--out",    default="./outputs")
+    parser.add_argument("--steps",  type=int, default=None)
+    parser.add_argument("--reload", action="store_true",
+                        help="Reload existing dataset.json instead of regenerating")
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    # Tokenizer
+    cfg = Config()
+    
+    tokenizer = SROTokenizer.load("tokenizer1000.json")
+    cfg.vocab_size = tokenizer.vocab_size
+    entities, entity_index, train_queries, val_queries, test_queries, held_out_names = load_dataset("dataset_composition1000.json")
+   
+
+    # Dataloaders
+    print("\nBuilding dataloaders...")
+    train_dl = get_dataloaders(train_queries, tokenizer, batch_size=cfg.batch_size)
+
+    # Train
+    if args.model in ("summed", "both"):
+        print(f"\n{'='*55}")
+        print("Training: SUMMED (baseline)")
+        print(f"{'='*55}")
+        train("summed", cfg, train_dl, device, out_dir=f"{args.out}/summed")
+    
+    if args.model in ("disentangled", "both"):
+        print(f"\n{'='*55}")
+        print("Training: DISENTANGLED (method)")
+        print(f"{'='*55}")
+        train("disentangled", cfg, train_dl, device, out_dir=f"{args.out}/disentangled")
+
+    print("\nTraining complete.")
+
+
