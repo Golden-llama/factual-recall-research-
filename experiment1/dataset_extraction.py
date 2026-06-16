@@ -59,6 +59,8 @@ ALL_RELATIONS = EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
 # origin, class, and along with a name for one entity that matches each category of same color,
 # same shape, same size, etc
 
+def generate_entity_pool(n_total = 10000, seed = 42):
+    return generate_entities(n=n_total, seed = seed)
 def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
     random.seed(seed)
  
@@ -72,7 +74,7 @@ def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
     names = set()
     while len(names) < n:
         name = (random.choice(prefixes) + random.choice(suffixes)
-                + "-" + str(random.randint(1, 5000)))
+                + "-" + str(random.randint(1, 90000)))
         names.add(name)
     names = sorted(names)
  
@@ -85,6 +87,16 @@ def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
         entities.append(entity)
  
     return entities
+def build_capacity_dataset(all_entities, n_train, seed = 42):
+    random.seed(seed)
+    random.shuffle(all_entities)
+    train_entities = all_entities[:n_train]
+    train_queries = make_extraction_queries(train_entities, split = "train")
+    test_queries = make_extraction_queries(train_entities, split = "test")
+    print("Training on ",  n_train, " entities")
+    print(f"  Training queries: {len(train_queries)}")
+    print(f"  Test queries:     {len(test_queries)}")
+    return train_queries, test_queries
 
 def build_entity_index(entities: List[Dict]) -> Dict[str, Dict]:
     return {e["name"]: e for e in entities}
@@ -184,7 +196,7 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
  
     return entities, entity_index, train_queries, test_queries, held_out_names
 
-def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction1000.json"):
+def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction10000.json"):
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -197,7 +209,7 @@ def save_dataset(entities, train_queries, test_queries, held_out_names, path="da
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset_extraction1000.json"):
+def load_dataset(path="dataset_extraction10000.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -241,7 +253,7 @@ def collate_fn(batch):
     return inputs, targets, masks
 
 if __name__ == "__main__":
-    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=1000) 
+    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=10000) 
     e = entities[0]
     print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
     print(f"\nTraining sequences for {e['name']}:")

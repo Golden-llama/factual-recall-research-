@@ -19,13 +19,13 @@ import os
 # Config
 
 class Config:
-    vocab_size    = 1053
+    vocab_size    = 5053
     max_seq_len   = 20
     d_model       = 120
     n_heads       = 4          # as specified
     n_layers      = 4          # as specified
     dropout       = 0
-    lr            = 1e-3
+    lr            = 1e-4
     batch_size    = 32
     grad_accum    = 2          # effective batch = 64
     max_steps     = 100000   # hard ceiling — early stopping will trigger first
@@ -34,7 +34,7 @@ class Config:
     seed          = 42
     save_every = 10000
     eval_every = 200
-    patience = 10
+    patience = 20
 
 
     # Disentangled split — must sum to d_model

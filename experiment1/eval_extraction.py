@@ -7,9 +7,9 @@ from dataset_extraction import load_dataset, EXTRACTION_RELATIONS
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
 
-entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset_extraction1000.json")
+entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset_extraction5000.json")
 
-tokenizer      = SROTokenizer.from_dataset("dataset_extraction1000.json")
+tokenizer      = SROTokenizer.from_dataset("dataset_extraction5000.json")
 cfg.vocab_size = tokenizer.vocab_size
 cfg.d_model    = 120
 cfg.d_semantic    = 90
