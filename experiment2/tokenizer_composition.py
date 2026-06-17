@@ -150,7 +150,7 @@ class SROTokenizer:
         print(f"  Tokenizer saved → {path}")
 
     @classmethod
-    def load(cls, path: str = "experiment1/tokenizer1000.json") -> "SROTokenizer":
+    def load(cls, path: str = "experiment2/tokenizer1000.json") -> "SROTokenizer":
         """
         Load a previously saved tokenizer directly from tokenizer.json.
         Faster than rebuilding from dataset.json if the vocab hasn't changed.

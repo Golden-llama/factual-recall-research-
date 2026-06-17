@@ -30,7 +30,7 @@ if __name__ == "__main__":
     
     tokenizer = SROTokenizer.load("tokenizer1000.json")
     cfg.vocab_size = tokenizer.vocab_size
-    entities, entity_index, train_queries, val_queries, test_queries, held_out_names = load_dataset("dataset_composition1000.json")
+    entities, train_queries, val_queries, test_queries = load_dataset("dataset_composition1000.json")
    
 
     # Dataloaders

@@ -11,7 +11,7 @@ from dataset_composition import (
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
 
-entities, entity_index, train_queries, val_queries, test_queries, held_out_names = \
+entities, train_queries, val_queries, test_queries = \
     load_dataset("dataset_composition1000.json")
 
 tokenizer      = SROTokenizer.load("tokenizer1000.json")
@@ -100,7 +100,7 @@ def print_examples(
     print(f"\nAccuracy on these {shown}: {correct_count}/{shown}")
 
 # ── Split test set into three sections ─────────────────────────
-def split_queries(test_queries, held_out_names):
+def split_queries(test_queries):
     extraction = [
         q for q in test_queries
         if q.query_type == "extraction"
@@ -109,13 +109,13 @@ def split_queries(test_queries, held_out_names):
     comp_seen = [
         q for q in test_queries
         if q.query_type == "composition"
-        and q.subject.split()[0] not in held_out_names
+        and q.held_out == False
     ]
 
     comp_heldout = [
         q for q in test_queries
         if q.query_type == "composition"
-        and q.subject.split()[0] in held_out_names
+        and q.held_out == True
     ]
 
     return extraction, comp_seen, comp_heldout
@@ -159,7 +159,7 @@ def print_comparison(section, relations, sr, cr):
 
 
 
-extraction, comp_seen, comp_heldout = split_queries(test_queries, held_out_names)
+extraction, comp_seen, comp_heldout = split_queries(test_queries)
 print_examples(
     summed_model,
     tokenizer,
