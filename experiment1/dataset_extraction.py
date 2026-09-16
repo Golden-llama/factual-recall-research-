@@ -41,13 +41,38 @@ Relations:
   Total R = 11
 """
 ATTRIBUTE_SCHEMA = {
-    "color":    ["red", "blue", "green", "yellow", "purple", "orange", "black", "white"],
-    "shape":    ["circle", "triangle", "square", "hexagon", "star", "diamond"],
-    "size":     ["tiny", "small", "medium", "large", "huge"],
-    "material": ["metal", "wood", "glass", "stone", "crystal", "plastic"],
-    "origin":   ["region_A", "region_B", "region_C", "region_D", "region_E"],
-    "class": ["warrior", "scholar", "builder", "healer", "explorer"]
-
+    "color": [
+        "red", "blue", "green", "yellow", "purple", "orange", "black", "white",
+        "silver", "gold", "cyan", "magenta", "teal", "maroon", "navy", "lime",
+        "indigo", "violet", "gray", "pink",
+    ],
+    "shape": [
+        "circle", "triangle", "square", "hexagon", "star", "diamond", "oval",
+        "rectangle", "pentagon", "octagon", "crescent", "cross", "arrow",
+        "trapezoid", "parallelogram", "kite", "heart", "spiral", "ring",
+        "chevron",
+    ],
+    "size": [
+        "tiny", "small", "medium", "large", "huge", "narrow", "wide", "short",
+        "tall", "thin", "thick", "compact", "broad", "mini", "giant", "long",
+        "shallow", "deep", "light", "heavy",
+    ],
+    "material": [
+        "metal", "wood", "glass", "stone", "crystal", "plastic", "cloth",
+        "paper", "bone", "clay", "ceramic", "rubber", "leather", "copper",
+        "iron", "steel", "silver_mat", "gold_mat", "obsidian", "marble",
+    ],
+    "origin": [
+        "region_A", "region_B", "region_C", "region_D", "region_E",
+        "region_F", "region_G", "region_H", "region_I", "region_J",
+        "region_K", "region_L", "region_M", "region_N", "region_O",
+        "region_P", "region_Q", "region_R", "region_S", "region_T",
+    ],
+    "class": [
+        "warrior", "scholar", "builder", "healer", "explorer", "artist",
+        "merchant", "guard", "pilot", "miner", "farmer", "scribe", "sailor",
+        "hunter", "chemist", "weaver", "mason", "scout", "keeper", "inventor",
+    ],
 }
 EXTRACTION_RELATIONS = sorted(ATTRIBUTE_SCHEMA.keys())
  
@@ -55,25 +80,48 @@ COMPOSITION_ATTRS = ["color", "shape", "size", "material", "origin"]
 COMPOSITION_RELATIONS = [f"same_{a}_as" for a in COMPOSITION_ATTRS]
 ALL_RELATIONS = EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
 
+NAME_FIRST_PARTS = [
+    "bli", "zor", "kre", "fax", "quu", "miv", "dro", "sple", "vrex", "thu",
+    "glon", "plix", "wubb", "yark", "neff", "stra", "vox", "murl", "thex",
+    "crin", "ark", "bel", "cor", "dax", "fen", "gar", "hel", "ion", "jor",
+    "kel", "lir", "mor", "nel", "orv", "pax", "quil", "rin", "sol", "tor",
+    "ulv", "ver", "wyn", "xel", "yor", "zen", "bril", "cav", "drem", "elx",
+    "fru",
+]
+
+
+NAME_SECOND_PARTS = [
+    "blax", "mp", "ll", "ford", "nik", "ix", "orp", "zel", "thra", "vix",
+    "lok", "phar", "wynn", "min", "drel", "forn", "gast", "hix", "jorn",
+    "bar", "cress", "dane", "elm", "fisk", "gorn", "hald", "ivar", "jasp",
+    "keth", "lorn", "moth", "nall", "os", "pelt", "quin", "rath", "sorn",
+    "tess", "uld", "vash", "wex", "xil", "yorn", "zeth", "brix", "cair",
+    "dusk", "em", "farl", "grin",
+]
+
+NAME_THIRD_PARTS = [
+    "ael", "bex", "cim", "dor", "esk", "fay", "gup", "hir", "ish", "jax",
+    "kor", "lev", "mun", "nix", "oph", "pyr", "qen", "rax", "sul", "tev",
+    "ulo", "vex", "wir", "xom", "yep", "zan", "abir", "brin", "cavo",
+    "delo", "ephi", "faro", "gavo", "hilo", "ivar", "juno", "kavo", "lumo",
+    "mivo", "naro", "orlo", "pavo", "qilo", "ravo", "sivo", "tavo", "uvo",
+    "vilo", "wavo", "xavo",
+]
+
 # returns a list of dictionaries, each representing an entity with color, shape, size, material,
 # origin, class, and along with a name for one entity that matches each category of same color,
 # same shape, same size, etc
+def make_entity_names (seed: int = 42):
+    names = [f"{first} {second} {third}" for first in NAME_FIRST_PARTS for second in NAME_SECOND_PARTS for third in NAME_THIRD_PARTS]
+    random.Random(seed).shuffle(names)
+    return names
 
 def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
     random.seed(seed)
  
-    prefixes = ["Zor", "Bli", "Kre", "Fax", "Quu", "Miv", "Dro", "Sple",
-                "Vrex", "Thu", "Glon", "Plix", "Wubb", "Yark", "Neff",
-                "Stra", "Vox", "Murl", "Thex", "Crin"]
-    suffixes = ["blax", "mp", "ll", "ford", "nik", "ix", "orp", "zel",
-                "thra", "vix", "lok", "phar", "wynn", "zor", "min",
-                "drel", "forn", "gast", "hix", "jorn"]
- 
-    names = set()
-    while len(names) < n:
-        name = (random.choice(prefixes) + random.choice(suffixes)
-                + "-" + str(random.randint(1, 5000)))
-        names.add(name)
+    names = make_entity_names(seed)
+    names = names[:n]
+    
     names = sorted(names)
  
     # Assign primitive attributes
@@ -85,6 +133,16 @@ def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
         entities.append(entity)
  
     return entities
+def build_capacity_dataset(all_entities, n_train, seed = 42):
+    random.seed(seed)
+    random.shuffle(all_entities)
+    train_entities = all_entities[:n_train]
+    train_queries = make_extraction_queries(train_entities, split = "train")
+    test_queries = make_extraction_queries(train_entities, split = "test")
+    print("Training on ",  n_train, " entities")
+    print(f"  Training queries: {len(train_queries)}")
+    print(f"  Test queries:     {len(test_queries)}")
+    return train_queries, test_queries
 
 def build_entity_index(entities: List[Dict]) -> Dict[str, Dict]:
     return {e["name"]: e for e in entities}
@@ -163,13 +221,13 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
     test_queries = all_extraction 
  
     # Tag held-out composition for generalization reporting
-    
+    '''
     for q in test_queries:
         if q.query_type == "composition":
             first_entity = q.subject.split()[0]
             if first_entity in held_out_names:
                 q.split = "test_generalization"
-    
+    '''
     n  = len(entities)
     R  = len(ALL_RELATIONS)
     print(f"\nDataset")
@@ -184,7 +242,7 @@ def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
  
     return entities, entity_index, train_queries, test_queries, held_out_names
 
-def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction1000.json"):
+def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction10000.json"):
     def q2d(q):
         return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
                 "query_type": q.query_type, "split": q.split}
@@ -197,7 +255,7 @@ def save_dataset(entities, train_queries, test_queries, held_out_names, path="da
         }, f, indent=2)
     print(f"  Saved → {path}")
 
-def load_dataset(path="dataset_extraction1000.json"):
+def load_dataset(path="dataset_extraction10000.json"):
     with open(path) as f:
         data = json.load(f)
     def d2q(d):
@@ -241,7 +299,7 @@ def collate_fn(batch):
     return inputs, targets, masks
 
 if __name__ == "__main__":
-    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=1000) 
+    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=102000) 
     e = entities[0]
     print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
     print(f"\nTraining sequences for {e['name']}:")
@@ -253,12 +311,22 @@ if __name__ == "__main__":
     save_dataset(entities, train_q, test_q, held_out) 
 
  
-def get_dataloaders(train_queries, tokenizer, batch_size=32):
-   
+def get_dataloaders(train_queries, tokenizer, batch_size=32, seed=42):
+    ds = QueryDataset(train_queries, tokenizer)
 
-    ds    = QueryDataset(train_queries, tokenizer)
-    tr_dl = DataLoader(ds, batch_size=batch_size, shuffle=True,
-                       collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+    tr_dl = DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=g,
+        collate_fn=collate_fn,
+        num_workers=2,
+        pin_memory=True,
+    )
+
     print(f"  Train sequences: {len(ds)}  ({len(tr_dl)} batches)")
     return tr_dl
  

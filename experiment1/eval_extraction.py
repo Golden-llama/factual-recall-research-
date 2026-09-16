@@ -7,14 +7,11 @@ from dataset_extraction import load_dataset, EXTRACTION_RELATIONS
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 cfg    = Config()
 
-entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset_extraction1000.json")
+entities, entity_index, train_queries, test_queries, held_out_names = load_dataset("dataset_extraction10000.json")
 
-tokenizer      = SROTokenizer.from_dataset("dataset_extraction1000.json")
+tokenizer      = SROTokenizer.from_dataset("dataset_extraction10000.json")
 cfg.vocab_size = tokenizer.vocab_size
-cfg.d_model    = 120
-cfg.d_semantic    = 90
-cfg.d_positional  = 30
-cfg.max_seq_len   = 20
+
 
 summed_model = load_model("outputs/summed/model_best.pt",       "summed",       cfg, device)
 disent_model = load_model("outputs/disentangled/model_best.pt", "disentangled", cfg, device)

@@ -19,33 +19,35 @@ import os
 # Config
 
 class Config:
-    vocab_size    = 1053
+    vocab_size    = 287
     max_seq_len   = 20
-    d_model       = 120
-    n_heads       = 4          # as specified
-    n_layers      = 4          # as specified
+    d_model       = 128
+    n_heads       = 4
+    n_layers      = 4
     dropout       = 0
-    lr            = 1e-3
-    batch_size    = 32
-    grad_accum    = 2          # effective batch = 64
-    max_steps     = 100000   # hard ceiling — early stopping will trigger first
-    warmup_steps  = 200
-    min_steps     = 1000     # don't stop before this many steps (let model warm up)
-    seed          = 42
+    lr            = 3e-4
+    lr_min        = 5e-6
+    lr_decay_steps = 1000000
+    batch_size    = 2048
+    grad_accum    = 1    
+    max_steps     = 1100000
+    warmup_steps  = 1000
+    seed = 44
+    patience = 10000
+    eval_every = 400
+    min_steps = 500000
     save_every = 10000
-    eval_every = 200
-    patience = 10
+
 
 
     # Disentangled split — must sum to d_model
-    d_semantic    = 90
-    d_positional  = 30
+    d_semantic    = 105
+    d_positional  = 23
 
 
 # Embeddings
 
 class SummedEmbedding(nn.Module):
-    """Baseline: token + positional embeddings summed into shared 768-dim space."""
     def __init__(self, cfg):
         super().__init__()
         self.token_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
@@ -161,15 +163,20 @@ class TransformerLM(nn.Module):
         return self.embed.token_emb(token_ids)
 
 
-# Training utilities
+# Training uti
 
 def get_lr(step, cfg):
     if step < cfg.warmup_steps:
         return cfg.lr * step / cfg.warmup_steps
-    # Cosine decay over max_steps — early stopping triggers before hitting this ceiling
-    progress = (step - cfg.warmup_steps) / max(1, cfg.max_steps - cfg.warmup_steps)
-    return cfg.lr * 0.5 * (1.0 + math.cos(math.pi * progress))
 
+    progress = (step - cfg.warmup_steps) / max(
+        1,
+        cfg.lr_decay_steps - cfg.warmup_steps
+    )
+    progress = min(1.0, max(0.0, progress))
+
+    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return cfg.lr_min + (cfg.lr - cfg.lr_min) * cosine
 
 
 def train(embedding_type, cfg, train_dl, device, out_dir):

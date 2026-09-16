@@ -1,0 +1,332 @@
+
+import random
+import json
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
+from collections import defaultdict
+from torch.nn.utils.rnn import pad_sequence
+"""
+<S> Zorblax-7 </S> <R> class </R> <O> warrior </O> <|sep|>
+<S> Zorblax-7 </S> <R> color </R> <O> blue </O> <|sep|>
+<S> Zorblax-7 </S> <R> material </R> <O> metal </O> <|sep|>
+<S> Zorblax-7 </S> <R> origin </R> <O> region_A </O> <|sep|>
+<S> Zorblax-7 </S> <R> shape </R> <O> triangle </O> <|sep|>
+<S> Zorblax-7 </S> <R> size </R> <O> large </O> <|sep|>
+<S> Zorblax-7 </S> <R> same_color_as </R> <O> Blimpnik-34 </O> <|sep|>
+<S> Zorblax-7 </S> <R> same_shape_as </R> <O> Krellford-2 </O> <|sep|>
+<S> Zorblax-7 </S> <R> same_material_as </R> <O> Faxnik-19 </O> <|sep|>
+<S> Zorblax-7 </S> <R> neighbor_color </R> <O> red </O> <|sep|>
+<S> Zorblax-7 </S> <R> neighbor_shape </R> <O> circle </O> <|sep|>
+"""
+
+"""
+dataset.py — Synthetic entity dataset for the positional encoding experiment.
+ 
+DESIGN:
+  - 1000 entities, each with 6 primitive attributes
+  - Composition relations stored on each entity (same_color_as, etc.)
+  - Training split:
+      All entities × extraction relations             → TRAIN
+      80% of entities × composition relations         → TRAIN
+      20% of entities × composition relations         → TEST only (generalization)
+  - Test split:
+      All entities × all relations (N × R accuracy)
+      Held-out entity × composition queries           (compositional generalization)
+      
+ 
+Relations:
+  Extraction  (6): color, shape, size, material, origin, class
+  Composition (5): same_color_as, same_shape_as, same_size_as,
+                   same_material_as, same_origin_as
+  Total R = 11
+"""
+ATTRIBUTE_SCHEMA = {
+    "color": [
+        "red", "blue", "green", "yellow", "purple", "orange", "black", "white",
+        "silver", "gold", "cyan", "magenta", "teal", "maroon", "navy", "lime",
+        "indigo", "violet", "gray", "pink",
+    ],
+    "shape": [
+        "circle", "triangle", "square", "hexagon", "star", "diamond", "oval",
+        "rectangle", "pentagon", "octagon", "crescent", "cross", "arrow",
+        "trapezoid", "parallelogram", "kite", "heart", "spiral", "ring",
+        "chevron",
+    ],
+    "size": [
+        "tiny", "small", "medium", "large", "huge", "narrow", "wide", "short",
+        "tall", "thin", "thick", "compact", "broad", "mini", "giant", "long",
+        "shallow", "deep", "light", "heavy",
+    ],
+    "material": [
+        "metal", "wood", "glass", "stone", "crystal", "plastic", "cloth",
+        "paper", "bone", "clay", "ceramic", "rubber", "leather", "copper",
+        "iron", "steel", "silver_mat", "gold_mat", "obsidian", "marble",
+    ],
+    "origin": [
+        "region_A", "region_B", "region_C", "region_D", "region_E",
+        "region_F", "region_G", "region_H", "region_I", "region_J",
+        "region_K", "region_L", "region_M", "region_N", "region_O",
+        "region_P", "region_Q", "region_R", "region_S", "region_T",
+    ],
+    "class": [
+        "warrior", "scholar", "builder", "healer", "explorer", "artist",
+        "merchant", "guard", "pilot", "miner", "farmer", "scribe", "sailor",
+        "hunter", "chemist", "weaver", "mason", "scout", "keeper", "inventor",
+    ],
+}
+EXTRACTION_RELATIONS = sorted(ATTRIBUTE_SCHEMA.keys())
+ 
+COMPOSITION_ATTRS = ["color", "shape", "size", "material", "origin"]
+COMPOSITION_RELATIONS = [f"same_{a}_as" for a in COMPOSITION_ATTRS]
+ALL_RELATIONS = EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
+
+NAME_FIRST_PARTS = [
+    "bli", "zor", "kre", "fax", "quu", "miv", "dro", "sple", "vrex", "thu",
+    "glon", "plix", "wubb", "yark", "neff", "stra", "vox", "murl", "thex",
+    "crin", "ark", "bel", "cor", "dax", "fen", "gar", "hel", "ion", "jor",
+    "kel", "lir", "mor", "nel", "orv", "pax", "quil", "rin", "sol", "tor",
+    "ulv", "ver", "wyn", "xel", "yor", "zen", "bril", "cav", "drem", "elx",
+    "fru",
+]
+
+
+NAME_SECOND_PARTS = [
+    "blax", "mp", "ll", "ford", "nik", "ix", "orp", "zel", "thra", "vix",
+    "lok", "phar", "wynn", "min", "drel", "forn", "gast", "hix", "jorn",
+    "bar", "cress", "dane", "elm", "fisk", "gorn", "hald", "ivar", "jasp",
+    "keth", "lorn", "moth", "nall", "os", "pelt", "quin", "rath", "sorn",
+    "tess", "uld", "vash", "wex", "xil", "yorn", "zeth", "brix", "cair",
+    "dusk", "em", "farl", "grin",
+]
+
+NAME_THIRD_PARTS = [
+    "ael", "bex", "cim", "dor", "esk", "fay", "gup", "hir", "ish", "jax",
+    "kor", "lev", "mun", "nix", "oph", "pyr", "qen", "rax", "sul", "tev",
+    "ulo", "vex", "wir", "xom", "yep", "zan", "abir", "brin", "cavo",
+    "delo", "ephi", "faro", "gavo", "hilo", "ivar", "juno", "kavo", "lumo",
+    "mivo", "naro", "orlo", "pavo", "qilo", "ravo", "sivo", "tavo", "uvo",
+    "vilo", "wavo", "xavo",
+]
+
+# returns a list of dictionaries, each representing an entity with color, shape, size, material,
+# origin, class, and along with a name for one entity that matches each category of same color,
+# same shape, same size, etc
+def make_entity_names (seed: int = 42):
+    names = [f"{first} {second} {third}" for first in NAME_FIRST_PARTS for second in NAME_SECOND_PARTS for third in NAME_THIRD_PARTS]
+    random.Random(seed).shuffle(names)
+    return names
+
+def generate_entities(n: int = 1500, seed: int = 42) -> List[Dict]:
+    random.seed(seed)
+ 
+    names = make_entity_names(seed)
+    names = names[:n]
+    
+    names = sorted(names)
+ 
+    # Assign primitive attributes
+    entities = []
+    for name in names:
+        entity = {"name": name}
+        for attr in EXTRACTION_RELATIONS:
+            entity[attr] = random.choice(ATTRIBUTE_SCHEMA[attr])
+        entities.append(entity)
+ 
+    return entities
+def build_capacity_dataset(all_entities, n_train, seed = 42):
+    random.seed(seed)
+    random.shuffle(all_entities)
+    train_entities = all_entities[:n_train]
+    train_queries = make_extraction_queries(train_entities, split = "train")
+    test_queries = make_extraction_queries(train_entities, split = "test")
+    print("Training on ",  n_train, " entities")
+    print(f"  Training queries: {len(train_queries)}")
+    print(f"  Test queries:     {len(test_queries)}")
+    return train_queries, test_queries
+
+def build_entity_index(entities: List[Dict]) -> Dict[str, Dict]:
+    return {e["name"]: e for e in entities}
+
+# sets up metadata for each training example
+@dataclass
+class Query:
+    subject:    str
+    relation:   str
+    answer:     str
+    query_type: str          # "extraction" | "composition" | "multihop"
+    split:      str          # "train" | "test"
+ 
+#full training example
+    @property
+    def sequence(self) -> str:
+        rel_nl = self.relation.replace("_", " ")
+        return f"<S> {self.subject} </S> <R> {rel_nl} </R> <O> {self.answer} </O>"
+# Used for model input
+    @property
+    def prompt(self) -> str:
+        rel_nl = self.relation.replace("_", " ")
+        return f"<S> {self.subject} </S> <R> {rel_nl} </R> <O>"
+
+    
+def make_extraction_queries(entities, split="train") -> List[Query]:
+    queries = []
+    for e in entities:
+        for rel in EXTRACTION_RELATIONS:
+            queries.append(Query(
+                subject=e["name"], relation=rel,
+                answer=e[rel], query_type="extraction", split=split,
+            ))
+    return queries
+ 
+
+
+    
+def build_dataset(n_entities=1500, seed=42, comp_train_frac=0.8):
+    """
+    Returns train_queries and test_queries.
+ 
+    Training:
+        All N × extraction relations                         (always)
+        comp_train_frac of entities × composition relations  (model learns what relations mean)
+ 
+    Test (all queries evaluated for N × R accuracy):
+        All N × extraction relations
+        All N × composition relations
+        -- subset: held-out entities × composition = generalization test
+    """
+    random.seed(seed)
+ 
+    entities     = generate_entities(n_entities, seed)
+    entity_index = build_entity_index(entities)
+ 
+    # Split entities for composition training
+    shuffled = entities[:]
+    random.shuffle(shuffled)
+    n_seen    = int(comp_train_frac * len(shuffled))
+    seen      = shuffled[:n_seen]       # composition queries in training
+    held_out  = shuffled[n_seen:]       # composition queries only in test
+ 
+    held_out_names = {e["name"] for e in held_out}
+ 
+    # ── Training queries ──────────────────────────────────────────
+    train_queries = (
+        make_extraction_queries(entities, split="train") 
+    )
+
+ 
+    # ── Test queries ──────────────────────────────────────────────
+    # All N × R pairs
+    all_extraction  = make_extraction_queries(entities,  split="test")
+ 
+    test_queries = all_extraction 
+ 
+    # Tag held-out composition for generalization reporting
+    '''
+    for q in test_queries:
+        if q.query_type == "composition":
+            first_entity = q.subject.split()[0]
+            if first_entity in held_out_names:
+                q.split = "test_generalization"
+    '''
+    n  = len(entities)
+    R  = len(ALL_RELATIONS)
+    print(f"\nDataset")
+    print(f"  Entities (N):                    {n}")
+    print(f"  Relations (R):                   {R}  →  N×R = {n*R}")
+    print(f"  Extraction relations:            {EXTRACTION_RELATIONS}")
+    print(f"  Composition relations:           {COMPOSITION_RELATIONS}")
+    print(f"  Entities with comp in training:  {len(seen)}  ({comp_train_frac*100:.0f}%)")
+    print(f"  Held-out for generalization:     {len(held_out)}  ({(1-comp_train_frac)*100:.0f}%)")
+    print(f"  Training queries:                {len(train_queries)}")
+    print(f"  Test queries (N×R):              {len(test_queries)}")
+ 
+    return entities, entity_index, train_queries, test_queries, held_out_names
+
+def save_dataset(entities, train_queries, test_queries, held_out_names, path="dataset_extraction10000.json"):
+    def q2d(q):
+        return {"subject": q.subject, "relation": q.relation, "answer": q.answer,
+                "query_type": q.query_type, "split": q.split}
+    with open(path, "w") as f:
+        json.dump({
+            "entities":       entities,
+            "train_queries":  [q2d(q) for q in train_queries],
+            "test_queries":   [q2d(q) for q in test_queries],
+            "held_out_names": list(held_out_names),
+        }, f, indent=2)
+    print(f"  Saved → {path}")
+
+def load_dataset(path="dataset_extraction10000.json"):
+    with open(path) as f:
+        data = json.load(f)
+    def d2q(d):
+        return Query(subject=d["subject"], relation=d["relation"], answer=d["answer"],
+                     query_type=d["query_type"], split=d["split"])
+    return (
+        data["entities"],
+        build_entity_index(data["entities"]),
+        [d2q(d) for d in data["train_queries"]],
+        [d2q(d) for d in data["test_queries"]],
+        set(data["held_out_names"]),
+    )
+
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+class QueryDataset(Dataset):
+    def __init__(self, queries, tokenizer):
+        self.seqs = []
+        o_id = tokenizer.convert_tokens_to_ids("<O>")
+        for q in sorted(queries, key=lambda q: (q.subject, q.relation)):
+            full = tokenizer.encode(q.sequence)
+           
+            x = torch.tensor(full[:-1], dtype=torch.long)
+            y = torch.tensor(full[1:], dtype=torch.long)
+            mask = torch.zeros(len(x), dtype = torch.bool)
+            for i, tok in enumerate(x.tolist()):
+                if tok == o_id:
+                    mask[i] = True
+                    break
+            self.seqs.append((x,y,mask))
+        
+
+    def __len__(self):        return len(self.seqs)
+    def __getitem__(self, i): return self.seqs[i]
+
+def collate_fn(batch):
+    inputs  = pad_sequence([b[0] for b in batch], batch_first=True, padding_value=0)
+    targets = pad_sequence([b[1] for b in batch], batch_first=True, padding_value=0)
+    masks   = pad_sequence([b[2] for b in batch], batch_first=True, padding_value=False)
+    return inputs, targets, masks
+
+if __name__ == "__main__":
+    entities, entity_index, train_q, test_q, held_out = build_dataset(n_entities=104000) 
+    e = entities[0]
+    print(f"\nSample entity:\n  {json.dumps(e, indent=4)}")
+    print(f"\nTraining sequences for {e['name']}:")
+    for q in [q for q in train_q if q.query_type == "composition"]:
+        print(f" {q.sequence}")
+    print(f"\nTest sequences for {e['name']}:")
+    for q in [q for q in test_q if q.subject == e["name"]][:14]:
+        print(f"  [{q.query_type:11}] {q.sequence}")
+    save_dataset(entities, train_q, test_q, held_out) 
+
+ 
+def get_dataloaders(train_queries, tokenizer, batch_size=32, seed=42):
+    ds = QueryDataset(train_queries, tokenizer)
+
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+    tr_dl = DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=g,
+        collate_fn=collate_fn,
+        num_workers=2,
+        pin_memory=True,
+    )
+
+    print(f"  Train sequences: {len(ds)}  ({len(tr_dl)} batches)")
+    return tr_dl
+ 

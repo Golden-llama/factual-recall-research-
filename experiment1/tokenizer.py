@@ -24,7 +24,7 @@ Usage:
     print(tokenizer.vocab_size)   # 1052
 """
 
-from dataset_extraction import ATTRIBUTE_SCHEMA, EXTRACTION_RELATIONS, COMPOSITION_RELATIONS
+from dataset_extraction import ATTRIBUTE_SCHEMA, EXTRACTION_RELATIONS, COMPOSITION_RELATIONS, NAME_FIRST_PARTS, NAME_SECOND_PARTS, NAME_THIRD_PARTS
 from typing import List, Union
 import json
 
@@ -68,13 +68,14 @@ class SROTokenizer:
             w for rel in EXTRACTION_RELATIONS + COMPOSITION_RELATIONS
             for w in rel.replace("_", " ").split()
         ))
-        entity_names_sorted = sorted(set(entity_names))
+        entity_name_parts = NAME_FIRST_PARTS + NAME_SECOND_PARTS + NAME_THIRD_PARTS
+        entity_name_parts = sorted(set(entity_name_parts))
 
         vocab = (
             self.SPECIAL_TOKENS +
             attr_values         +
             rel_words           +
-            entity_names_sorted +
+            entity_name_parts +
             self.BINARY_TOKENS
         )
 
@@ -86,11 +87,11 @@ class SROTokenizer:
         print(f"  Special tokens:   {len(self.SPECIAL_TOKENS)}")
         print(f"  Attribute values: {len(attr_values)}")
         print(f"  Relation words:   {len(rel_words)}")
-        print(f"  Entity names:     {len(entity_names_sorted)}  (from dataset.json)")
+        print(f"  Entity names:     {len(entity_name_parts)}  (from dataset.json)")
         print(f"  Total vocab:      {self.vocab_size}")
 
     @classmethod
-    def from_dataset(cls, dataset_path: str = "experiment1/dataset_extraction1000.json") -> "SROTokenizer":
+    def from_dataset(cls, dataset_path: str = "dataset_extraction10000.json") -> "SROTokenizer":
         """
         Build tokenizer using the entity names already saved in dataset.json.
         This is the recommended way to instantiate — guarantees the tokenizer
@@ -100,9 +101,7 @@ class SROTokenizer:
         """
         with open(dataset_path) as f:
             data = json.load(f)
-        entity_names = [e["name"] for e in data["entities"]]
-        print(f"  Loaded {len(entity_names)} entity names from {dataset_path}")
-        return cls(entity_names)
+        return cls(NAME_FIRST_PARTS + NAME_SECOND_PARTS)
 
     # Core tokenization
    
@@ -144,13 +143,13 @@ class SROTokenizer:
 
     # Save / load
 
-    def save(self, path: str = "experiment1/tokenizer1000.json"):
+    def save(self, path: str = "tokenizer10000.json"):
         with open(path, "w") as f:
             json.dump({"token2id": self.token2id}, f, indent=2)
         print(f"  Tokenizer saved → {path}")
 
     @classmethod
-    def load(cls, path: str = "experiment1/tokenizer1000.json") -> "SROTokenizer":
+    def load(cls, path: str = "tokenizer10000.json") -> "SROTokenizer":
         """
         Load a previously saved tokenizer directly from tokenizer.json.
         Faster than rebuilding from dataset.json if the vocab hasn't changed.
@@ -170,12 +169,12 @@ class SROTokenizer:
 if __name__ == "__main__":
     import os
 
-    if not os.path.exists("experiment1/dataset_extraction1000.json"):
+    if not os.path.exists("dataset_extraction10000.json"):
         print("dataset.json not found — run dataset.py first.")
         exit(1)
 
-    tokenizer = SROTokenizer.from_dataset("experiment1/dataset_extraction1000.json")
-    tokenizer.save("experiment1/tokenizer1000.json")
+    tokenizer = SROTokenizer.from_dataset("dataset_extraction10000.json")
+    tokenizer.save("tokenizer10000.json")
 
     print()
     test_sequences = [
